@@ -1,15 +1,14 @@
 import { useRef, useState, type ChangeEvent } from 'react';
-import { Plus, Save } from 'lucide-react';
-import type { Route } from './+types/home';
+import { Plus, PlusCircle, Save, Trash2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+
 interface TranslationData {
   [key: string]: string | TranslationData;
 }
 
-// Utility function to flatten nested objects with paths
 const flattenObject = (
   obj: TranslationData,
   prefix = '',
@@ -28,13 +27,11 @@ const flattenObject = (
   }, {});
 };
 
-// Get the parent path of a key
 const getParentPath = (path: string): string => {
   const parts = path.split('.');
   return parts.slice(0, -1).join('.');
 };
 
-// Group flattened keys by their parent paths
 const groupByParent = (
   flatData: Record<string, string>,
 ): Record<string, Record<string, string>> => {
@@ -50,13 +47,6 @@ const groupByParent = (
 
   return groups;
 };
-
-export function meta({}: Route.MetaArgs) {
-  return [
-    { title: 'Trans Diff' },
-    { name: 'description', content: 'A tool to compare translations' },
-  ];
-}
 
 const unflattenObject = (obj: Record<string, string>): TranslationData => {
   const result: TranslationData = {};
@@ -83,14 +73,18 @@ const TranslationGroup = ({
   groupKey,
   entries,
   otherFileEntries = {},
-  isLeft,
   onValueChange,
+  onKeyChange,
+  onRemove,
+  onAdd,
 }: {
   groupKey: string;
   entries: Record<string, string>;
   otherFileEntries?: Record<string, string>;
-  isLeft: boolean;
   onValueChange: (key: string, value: string) => void;
+  onKeyChange: (oldKey: string, newKey: string) => void;
+  onRemove: (key: string) => void;
+  onAdd: (parentPath: string) => void;
 }) => {
   const allKeys = new Set([
     ...Object.keys(entries),
@@ -100,24 +94,33 @@ const TranslationGroup = ({
   return (
     <div className='mb-4'>
       {groupKey && (
-        <div className='font-medium text-sm text-gray-600 mb-2 pl-2'>
-          {groupKey}
+        <div className='font-medium text-sm text-gray-600 mb-2 pl-2 flex justify-between items-center'>
+          <span>{groupKey}</span>
+          <Button
+            variant='ghost'
+            size='sm'
+            onClick={() => onAdd(groupKey)}
+            className='h-6 px-2'
+          >
+            <PlusCircle className='h-4 w-4 mr-1' />
+            Add Key
+          </Button>
         </div>
       )}
-      <div className='space-y-1 pl-4'>
+      <div className='space-y-2 px-4'>
         {Array.from(allKeys)
           .sort()
           .map((key) => {
             const hasKey = key in entries;
             const value = entries[key];
             const isMissing = !hasKey;
+            const keyName = key.split('.').pop() || '';
 
             return (
               <div
                 key={key}
-                className={`p-3 rounded relative overflow-hidden
-                  ${isMissing ? 'bg-red-50' : 'bg-gray-50'}
-                  ${isMissing ? 'min-h-[4rem]' : ''}
+                className={`p-3 rounded-md relative overflow-hidden
+                  ${isMissing ? 'bg-red-50' : 'bg-gray-100'}
                 `}
               >
                 {isMissing && (
@@ -134,23 +137,45 @@ const TranslationGroup = ({
                     }}
                   />
                 )}
-                <div className='relative z-10'>
-                  <div className='font-medium text-sm text-gray-700 mb-2'>
-                    {key.split('.').pop()}
+                <div className='relative z-10 space-y-2'>
+                  <div className='grid grid-cols-[35px_1fr_30px] gap-2 items-center'>
+                    <p className='text-xs font-medium text-gray-500'>Key</p>
+                    <Input
+                      value={keyName}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        const newKey = getParentPath(key)
+                          ? `${getParentPath(key)}.${e.target.value}`
+                          : e.target.value;
+                        onKeyChange(key, newKey);
+                      }}
+                      className='text-sm font-medium bg-gray-200 border-gray-300'
+                    />
+                    <Button
+                      variant='ghost'
+                      size='sm'
+                      onClick={() => onRemove(key)}
+                      className='h-8 w-8 p-0'
+                      disabled={isMissing}
+                    >
+                      <Trash2 className='h-4 w-4 text-red-500' />
+                    </Button>
                   </div>
-                  {!isMissing ? (
+                  <div className='grid grid-cols-[35px_1fr_30px] gap-2 items-center'>
+                    <p className='text-xs font-medium text-gray-500'>Value</p>
                     <Input
-                      value={value}
-                      onChange={(e) => onValueChange(key, e.target.value)}
-                      className='text-sm'
+                      value={value || ''}
+                      placeholder={isMissing ? 'Add translation' : ''}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        if (e.target.value === '') {
+                          onRemove(key);
+                        } else {
+                          onValueChange(key, e.target.value);
+                        }
+                      }}
+                      className='text-sm bg-white'
                     />
-                  ) : (
-                    <Input
-                      placeholder='Add translation'
-                      onChange={(e) => onValueChange(key, e.target.value)}
-                      className='text-sm'
-                    />
-                  )}
+                    <div /> {/* Empty div to maintain grid alignment */}
+                  </div>
                 </div>
               </div>
             );
@@ -164,7 +189,6 @@ const TranslationViewer = ({
   data,
   otherFileData,
   fileName,
-  isLeft,
   containerRef,
   onScroll,
   onSave,
@@ -173,7 +197,6 @@ const TranslationViewer = ({
   data: TranslationData;
   otherFileData?: TranslationData;
   fileName: string;
-  isLeft: boolean;
   containerRef: React.RefObject<HTMLDivElement>;
   onScroll: (scrollTop: number) => void;
   onSave: () => void;
@@ -194,6 +217,29 @@ const TranslationViewer = ({
     onDataChange(newData);
   };
 
+  const handleKeyChange = (oldKey: string, newKey: string) => {
+    const newFlatData = { ...flatData };
+    const value = newFlatData[oldKey];
+    delete newFlatData[oldKey];
+    newFlatData[newKey] = value;
+    const newData = unflattenObject(newFlatData);
+    onDataChange(newData);
+  };
+
+  const handleRemove = (key: string) => {
+    const newFlatData = { ...flatData };
+    delete newFlatData[key];
+    const newData = unflattenObject(newFlatData);
+    onDataChange(newData);
+  };
+
+  const handleAdd = (parentPath: string) => {
+    const newKey = parentPath ? `${parentPath}.newKey` : 'newKey';
+    const newFlatData = { ...flatData, [newKey]: '' };
+    const newData = unflattenObject(newFlatData);
+    onDataChange(newData);
+  };
+
   return (
     <Card className='h-full'>
       <CardContent className='p-4 h-full'>
@@ -203,6 +249,15 @@ const TranslationViewer = ({
             <span className='text-sm text-gray-500'>
               {Object.keys(flatData).length} keys
             </span>
+            <Button
+              onClick={() => handleAdd('')}
+              size='sm'
+              variant='outline'
+              className='mr-2'
+            >
+              <Plus className='h-4 w-4 mr-2' />
+              Add Root Key
+            </Button>
             <Button onClick={onSave} size='sm'>
               <Save className='h-4 w-4 mr-2' />
               Save
@@ -222,8 +277,10 @@ const TranslationViewer = ({
                 groupKey={groupKey}
                 entries={groups[groupKey] || {}}
                 otherFileEntries={otherGroups[groupKey] || {}}
-                isLeft={isLeft}
                 onValueChange={handleValueChange}
+                onKeyChange={handleKeyChange}
+                onRemove={handleRemove}
+                onAdd={handleAdd}
               />
             ))}
         </div>
@@ -349,7 +406,6 @@ export default function Home() {
               data={file1}
               otherFileData={file2 || undefined}
               fileName={fileName1}
-              isLeft={true}
               containerRef={leftScrollRef as React.RefObject<HTMLDivElement>}
               onScroll={(scrollTop) => handleScroll(scrollTop, true)}
               onSave={() => handleSave(file1, fileName1)}
@@ -367,7 +423,6 @@ export default function Home() {
                 data={file2}
                 otherFileData={file1}
                 fileName={fileName2}
-                isLeft={false}
                 containerRef={rightScrollRef as React.RefObject<HTMLDivElement>}
                 onScroll={(scrollTop) => handleScroll(scrollTop, false)}
                 onSave={() => handleSave(file2, fileName2)}
