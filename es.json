@@ -1,0 +1,48 @@
+{
+  "common": {
+    "buttons": {
+      "submit": "Enviar",
+      "cancel": "Cancelar",
+      "save": "Guardar"
+    },
+    "messages": {
+      "success": "Operación completada con éxito",
+      "error": "Se produjo un error",
+      "confirmDelete": "¿Está seguro de que desea eliminar este elemento?"
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Iniciar Sesión",
+      "email": "Correo Electrónico",
+      "password": "Contraseña",
+      "forgotPassword": "¿Olvidaste tu contraseña?",
+      "rememberMe": "Recuérdame"
+    },
+    "register": {
+      "title": "Crear Cuenta",
+      "name": "Nombre Completo",
+      "email": "Correo Electrónico",
+      "confirmPassword": "Confirmar Contraseña"
+    }
+  },
+  "dashboard": {
+    "welcome": "Bienvenido de nuevo",
+    "stats": {
+      "totalUsers": "Usuarios Totales",
+      "activeUsers": "Usuarios Activos"
+    }
+  },
+  "settings": {
+    "title": "Configuración",
+    "theme": {
+      "light": "Modo Claro",
+      "dark": "Modo Oscuro",
+      "system": "Usar Configuración del Sistema"
+    },
+    "notifications": {
+      "title": "Notificaciones",
+      "push": "Notificaciones Push"
+    }
+  }
+}
