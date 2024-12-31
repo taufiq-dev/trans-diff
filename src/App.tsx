@@ -4,10 +4,17 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Menubar } from './components/ui/menubar';
+import { cn } from './lib/utils';
 
-interface TranslationData {
+type TranslationFile = {
+  data: TranslationData;
+  fileName: string;
+};
+
+type TranslationData = {
   [key: string]: string | TranslationData;
-}
+};
 
 const flattenObject = (
   obj: TranslationData,
@@ -72,7 +79,7 @@ const unflattenObject = (obj: Record<string, string>): TranslationData => {
 const TranslationGroup = ({
   groupKey,
   entries,
-  otherFileEntries = {},
+  otherFilesEntries = [],
   onValueChange,
   onKeyChange,
   onRemove,
@@ -80,7 +87,7 @@ const TranslationGroup = ({
 }: {
   groupKey: string;
   entries: Record<string, string>;
-  otherFileEntries?: Record<string, string>;
+  otherFilesEntries: Record<string, string>[];
   onValueChange: (key: string, value: string) => void;
   onKeyChange: (oldKey: string, newKey: string) => void;
   onRemove: (key: string) => void;
@@ -88,7 +95,7 @@ const TranslationGroup = ({
 }) => {
   const allKeys = new Set([
     ...Object.keys(entries),
-    ...Object.keys(otherFileEntries),
+    ...otherFilesEntries.flatMap((entries) => Object.keys(entries)),
   ]);
 
   return (
@@ -120,19 +127,19 @@ const TranslationGroup = ({
               <div
                 key={key}
                 className={`p-3 rounded-md relative overflow-hidden
-                  ${isMissing ? 'bg-red-50' : 'bg-gray-100'}
+                  ${isMissing ? 'bg-red-50' : 'bg-slate-100'}
                 `}
               >
                 {isMissing && (
                   <div
-                    className='absolute inset-0 opacity-20'
+                    className='absolute inset-0 opacity-30'
                     style={{
                       backgroundImage: `repeating-linear-gradient(
-                        45deg,
+                        -45deg,
                         transparent,
                         transparent 8px,
-                        rgba(239, 68, 68, 0.2) 8px,
-                        rgba(239, 68, 68, 0.2) 16px
+                        rgba(239, 68, 68, 0.5) 8px,
+                        rgba(239, 68, 68, 0.5) 16px
                       )`,
                     }}
                   />
@@ -148,17 +155,18 @@ const TranslationGroup = ({
                           : e.target.value;
                         onKeyChange(key, newKey);
                       }}
-                      className='text-sm font-medium bg-gray-200 border-gray-300'
+                      className='text-sm font-medium bg-slate-200 border-gray-300'
                     />
-                    <Button
-                      variant='ghost'
-                      size='sm'
-                      onClick={() => onRemove(key)}
-                      className='h-8 w-8 p-0'
-                      disabled={isMissing}
-                    >
-                      <Trash2 className='h-4 w-4 text-red-500' />
-                    </Button>
+                    {!isMissing && (
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        onClick={() => onRemove(key)}
+                        className='h-8 w-8 p-0'
+                      >
+                        <Trash2 className='h-4 w-4 text-red-500' />
+                      </Button>
+                    )}
                   </div>
                   <div className='grid grid-cols-[35px_1fr_30px] gap-2 items-center'>
                     <p className='text-xs font-medium text-gray-500'>Value</p>
@@ -187,28 +195,31 @@ const TranslationGroup = ({
 
 const TranslationViewer = ({
   data,
-  otherFileData,
+  otherFilesData,
   fileName,
   containerRef,
   onScroll,
   onSave,
   onDataChange,
+  onRemove,
 }: {
   data: TranslationData;
-  otherFileData?: TranslationData;
+  otherFilesData: TranslationData[];
   fileName: string;
-  containerRef: React.RefObject<HTMLDivElement>;
+  containerRef: (node: HTMLDivElement | null) => void;
   onScroll: (scrollTop: number) => void;
   onSave: () => void;
   onDataChange: (newData: TranslationData) => void;
+  onRemove: () => void;
 }) => {
   const flatData = flattenObject(data);
-  const flatOtherData = otherFileData ? flattenObject(otherFileData) : {};
   const groups = groupByParent(flatData);
-  const otherGroups = otherFileData ? groupByParent(flatOtherData) : {};
+  const otherGroups = otherFilesData.map((data) =>
+    groupByParent(flattenObject(data)),
+  );
   const allGroupKeys = new Set([
     ...Object.keys(groups),
-    ...Object.keys(otherGroups),
+    ...otherGroups.flatMap((group) => Object.keys(group)),
   ]);
 
   const handleValueChange = (key: string, value: string) => {
@@ -241,8 +252,8 @@ const TranslationViewer = ({
   };
 
   return (
-    <Card className='h-full'>
-      <CardContent className='p-4 h-full'>
+    <Card className='p-4'>
+      <CardContent>
         <div className='flex items-center justify-between mb-4'>
           <h2 className='text-lg font-semibold'>{fileName}</h2>
           <div className='flex items-center gap-4'>
@@ -258,16 +269,20 @@ const TranslationViewer = ({
               <Plus className='h-4 w-4 mr-2' />
               Add Root Key
             </Button>
-            <Button onClick={onSave} size='sm'>
+            <Button onClick={onSave} size='sm' variant='default'>
               <Save className='h-4 w-4 mr-2' />
               Save
+            </Button>
+            <Button onClick={onRemove} size='sm' variant='destructive'>
+              <Trash2 className='h-4 w-4 mr-2' />
+              Remove
             </Button>
           </div>
         </div>
         <div
           ref={containerRef}
           onScroll={(e) => onScroll(e.currentTarget.scrollTop)}
-          className='overflow-y-auto h-[calc(100vh-12rem)]'
+          className={cn('overflow-y-auto', 'max-h-[calc(100vh-15.5rem)]')}
         >
           {Array.from(allGroupKeys)
             .sort()
@@ -276,7 +291,9 @@ const TranslationViewer = ({
                 key={groupKey}
                 groupKey={groupKey}
                 entries={groups[groupKey] || {}}
-                otherFileEntries={otherGroups[groupKey] || {}}
+                otherFilesEntries={otherGroups.map(
+                  (group) => group[groupKey] || {},
+                )}
                 onValueChange={handleValueChange}
                 onKeyChange={handleKeyChange}
                 onRemove={handleRemove}
@@ -290,26 +307,21 @@ const TranslationViewer = ({
 };
 
 export default function Home() {
-  const [file1, setFile1] = useState<TranslationData | null>(null);
-  const [file2, setFile2] = useState<TranslationData | null>(null);
-  const [fileName1, setFileName1] = useState<string>('');
-  const [fileName2, setFileName2] = useState<string>('');
+  const [files, setFiles] = useState<TranslationFile[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const leftScrollRef = useRef<HTMLDivElement>(null);
-  const rightScrollRef = useRef<HTMLDivElement>(null);
+  const scrollRefs = useRef<(HTMLDivElement | null)[]>([]);
   const isScrolling = useRef(false);
 
-  const handleScroll = (scrollTop: number, isLeft: boolean) => {
+  const handleScroll = (scrollTop: number, index: number) => {
     if (isScrolling.current) return;
-
     isScrolling.current = true;
 
-    if (isLeft && rightScrollRef.current) {
-      rightScrollRef.current.scrollTop = scrollTop;
-    } else if (!isLeft && leftScrollRef.current) {
-      leftScrollRef.current.scrollTop = scrollTop;
-    }
+    scrollRefs.current.forEach((ref, i) => {
+      if (i !== index && ref) {
+        ref.scrollTop = scrollTop;
+      }
+    });
 
     requestAnimationFrame(() => {
       isScrolling.current = false;
@@ -330,10 +342,7 @@ export default function Home() {
     URL.revokeObjectURL(url);
   };
 
-  const handleFileUpload = (
-    event: ChangeEvent<HTMLInputElement>,
-    fileNum: 1 | 2,
-  ): void => {
+  const handleFileUpload = (event: ChangeEvent<HTMLInputElement>): void => {
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
@@ -342,13 +351,7 @@ export default function Home() {
           const json = JSON.parse(
             e.target?.result as string,
           ) as TranslationData;
-          if (fileNum === 1) {
-            setFile1(json);
-            setFileName1(file.name);
-          } else {
-            setFile2(json);
-            setFileName2(file.name);
-          }
+          setFiles((prev) => [...prev, { data: json, fileName: file.name }]);
           setError(null);
         } catch (err) {
           setError(
@@ -362,18 +365,29 @@ export default function Home() {
     }
   };
 
-  const renderFileUploadButton = (fileNum: 1 | 2) => (
-    <div className='flex flex-col items-center justify-center h-full'>
+  const handleDataChange = (index: number, newData: TranslationData) => {
+    setFiles((prev) =>
+      prev.map((file, i) => (i === index ? { ...file, data: newData } : file)),
+    );
+  };
+
+  const renderFileUploadButton = () => (
+    <div
+      className={cn(
+        'flex flex-col items-center justify-center min-w-[40rem] self-center border-dashed border-2 rounded-lg has-[:hover]:border-blue-200',
+        'min-h-[calc(100vh-9rem)]',
+      )}
+    >
       <input
         type='file'
         accept='.json'
-        onChange={(e) => handleFileUpload(e, fileNum)}
+        onChange={handleFileUpload}
         className='hidden'
-        id={`file-upload-${fileNum}`}
+        id='file-upload'
       />
       <label
-        htmlFor={`file-upload-${fileNum}`}
-        className='cursor-pointer w-32 h-32 rounded-full flex flex-col items-center justify-center gap-2 border-2 border-dashed hover:border-solid'
+        htmlFor='file-upload'
+        className='cursor-pointer w-32 h-32 rounded-full flex flex-col items-center justify-center gap-2 border-2 border-dashed hover:border-inherit'
       >
         <Plus className='h-12 w-12' />
         <span className='text-sm'>Add JSON</span>
@@ -381,8 +395,18 @@ export default function Home() {
     </div>
   );
 
+  const handleRemoveFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+    // Clean up the scroll ref for the removed file
+    scrollRefs.current = scrollRefs.current.filter((_, i) => i !== index);
+  };
+
   return (
-    <div className='min-h-screen bg-gray-50 p-6'>
+    <div className={cn('p-6 flex flex-col gap-4', 'w-full')}>
+      <Menubar className='px-4 flex flex-row gap-4'>
+        <h4 className='text-lg font-semibold'>Trans Diff</h4>
+        <p className='text-sm text-gray-500'>A tool to compare and edit translations</p>
+      </Menubar>
       {error && (
         <Alert variant='destructive' className='mb-6'>
           <AlertDescription>{error}</AlertDescription>
@@ -390,49 +414,33 @@ export default function Home() {
       )}
 
       <div
-        className={`max-w-7xl mx-auto ${
-          file1
-            ? 'grid grid-cols-1 md:grid-cols-2 gap-8'
-            : 'flex justify-center items-center'
-        }`}
-      >
-        <div
-          className={`min-h-[calc(100vh-8rem)] ${
-            !file1 ? 'flex items-center justify-center' : ''
-          }`}
-        >
-          {file1 ? (
-            <TranslationViewer
-              data={file1}
-              otherFileData={file2 || undefined}
-              fileName={fileName1}
-              containerRef={leftScrollRef as React.RefObject<HTMLDivElement>}
-              onScroll={(scrollTop) => handleScroll(scrollTop, true)}
-              onSave={() => handleSave(file1, fileName1)}
-              onDataChange={setFile1}
-            />
-          ) : (
-            renderFileUploadButton(1)
-          )}
-        </div>
-
-        {file1 && (
-          <div className='min-h-[calc(100vh-8rem)]'>
-            {file2 ? (
-              <TranslationViewer
-                data={file2}
-                otherFileData={file1}
-                fileName={fileName2}
-                containerRef={rightScrollRef as React.RefObject<HTMLDivElement>}
-                onScroll={(scrollTop) => handleScroll(scrollTop, false)}
-                onSave={() => handleSave(file2, fileName2)}
-                onDataChange={setFile2}
-              />
-            ) : (
-              renderFileUploadButton(2)
-            )}
-          </div>
+        className={cn(
+          'w-full mx-auto flex flex-row gap-8 overflow-x-auto pb-4',
+          files.length > 0 ? 'justify-start' : 'justify-center',
         )}
+      >
+        {files.map((file, index) => (
+          <div
+            key={`${file.fileName}-${index}`}
+            className={cn('min-w-[40rem]')}
+          >
+            <TranslationViewer
+              data={file.data}
+              otherFilesData={files
+                .filter((_, i) => i !== index)
+                .map((f) => f.data)}
+              fileName={file.fileName}
+              containerRef={(el: HTMLDivElement | null) => {
+                scrollRefs.current[index] = el;
+              }}
+              onScroll={(scrollTop) => handleScroll(scrollTop, index)}
+              onSave={() => handleSave(file.data, file.fileName)}
+              onDataChange={(newData) => handleDataChange(index, newData)}
+              onRemove={() => handleRemoveFile(index)}
+            />
+          </div>
+        ))}
+        {renderFileUploadButton()}
       </div>
     </div>
   );

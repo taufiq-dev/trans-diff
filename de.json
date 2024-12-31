@@ -1,0 +1,67 @@
+{
+  "common": {
+    "buttons": {
+      "submit": "Absenden",
+      "cancel": "Abbrechen",
+      "save": "Speichern",
+      "delete": "Löschen",
+      "back": "Zurück"
+    },
+    "messages": {
+      "success": "Vorgang erfolgreich abgeschlossen",
+      "error": "Ein Fehler ist aufgetreten",
+      "confirmDelete": "Möchten Sie dieses Element wirklich löschen?",
+      "loading": "Wird geladen..."
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Anmelden",
+      "email": "E-Mail-Adresse",
+      "password": "Passwort",
+      "forgotPassword": "Passwort vergessen?",
+      "rememberMe": "Angemeldet bleiben",
+      "securityNote": "Verwenden Sie ein sicheres Passwort"
+    },
+    "register": {
+      "title": "Konto erstellen",
+      "name": "Vollständiger Name",
+      "email": "E-Mail-Adresse",
+      "password": "Passwort",
+      "confirmPassword": "Passwort bestätigen",
+      "terms": "Ich akzeptiere die Nutzungsbedingungen"
+    }
+  },
+  "dashboard": {
+    "welcome": "Willkommen zurück",
+    "stats": {
+      "totalUsers": "Gesamtanzahl Benutzer",
+      "activeUsers": "Aktive Benutzer",
+      "revenue": "Umsatz",
+      "newUsers": "Neue Benutzer"
+    },
+    "quickActions": {
+      "newProject": "Neues Projekt",
+      "invite": "Benutzer einladen"
+    }
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "theme": {
+      "light": "Heller Modus",
+      "dark": "Dunkler Modus",
+      "system": "Systemeinstellung verwenden"
+    },
+    "notifications": {
+      "title": "Benachrichtigungen",
+      "email": "E-Mail-Benachrichtigungen",
+      "push": "Push-Benachrichtigungen",
+      "desktop": "Desktop-Benachrichtigungen"
+    },
+    "privacy": {
+      "title": "Datenschutz",
+      "dataCollection": "Datenerfassung",
+      "cookies": "Cookie-Einstellungen"
+    }
+  }
+}

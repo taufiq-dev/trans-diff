@@ -1,0 +1,62 @@
+{
+  "common": {
+    "buttons": {
+      "submit": "Soumettre",
+      "cancel": "Annuler",
+      "save": "Enregistrer",
+      "delete": "Supprimer",
+      "edit": "Modifier"
+    },
+    "messages": {
+      "success": "Opération réussie",
+      "error": "Une erreur s'est produite",
+      "confirmDelete": "Êtes-vous sûr de vouloir supprimer cet élément ?",
+      "confirmCancel": "Êtes-vous sûr de vouloir annuler ?"
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Connexion",
+      "email": "Adresse e-mail",
+      "password": "Mot de passe",
+      "forgotPassword": "Mot de passe oublié ?",
+      "rememberMe": "Se souvenir de moi",
+      "twoFactor": "Authentification à deux facteurs"
+    },
+    "register": {
+      "title": "Créer un compte",
+      "name": "Nom complet",
+      "email": "Adresse e-mail",
+      "password": "Mot de passe",
+      "confirmPassword": "Confirmer le mot de passe"
+    }
+  },
+  "dashboard": {
+    "welcome": "Bienvenue",
+    "stats": {
+      "totalUsers": "Utilisateurs totaux",
+      "activeUsers": "Utilisateurs actifs",
+      "revenue": "Chiffre d'affaires",
+      "monthlyVisits": "Visites mensuelles"
+    }
+  },
+  "settings": {
+    "title": "Paramètres",
+    "theme": {
+      "light": "Mode clair",
+      "dark": "Mode sombre",
+      "system": "Utiliser les paramètres système",
+      "custom": "Personnalisé"
+    },
+    "notifications": {
+      "title": "Notifications",
+      "email": "Notifications par e-mail",
+      "push": "Notifications push",
+      "frequency": "Fréquence des notifications"
+    },
+    "language": {
+      "title": "Langue",
+      "auto": "Détecter automatiquement"
+    }
+  }
+}
