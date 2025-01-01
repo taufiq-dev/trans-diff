@@ -26,6 +26,12 @@ const AddKeyDialog = ({
   const [key, setKey] = useState('');
   const [value, setValue] = useState('');
 
+  const resetForm = () => {
+    setKey('');
+    setValue('');
+    setType('value');
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const fullKey = parentPath ? `${parentPath}.${key}` : key;
@@ -36,15 +42,19 @@ const AddKeyDialog = ({
       onAdd(fullKey, {});
     }
 
-    // Reset form and close dialog
-    setKey('');
-    setValue('');
-    setType('value');
     setOpen(false);
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(newOpen) => {
+        if (!newOpen) {
+          resetForm();
+        }
+        setOpen(newOpen);
+      }}
+    >
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className='sm:max-w-md'>
         <form onSubmit={handleSubmit}>
