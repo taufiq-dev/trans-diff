@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Menubar } from './components/ui/menubar';
 import { cn } from './lib/utils';
+import AddKeyDialog from './components/add-key-dialog';
 
 type TranslationFile = {
   data: TranslationData;
@@ -91,7 +92,7 @@ const TranslationGroup = ({
   onValueChange: (key: string, value: string) => void;
   onKeyChange: (oldKey: string, newKey: string) => void;
   onRemove: (key: string) => void;
-  onAdd: (parentPath: string) => void;
+  onAdd: (key: string, value: string | object) => void;
 }) => {
   const allKeys = new Set([
     ...Object.keys(entries),
@@ -103,15 +104,16 @@ const TranslationGroup = ({
       {groupKey && (
         <div className='font-medium text-sm text-gray-600 mb-2 pl-2 flex justify-between items-center'>
           <span>{groupKey}</span>
-          <Button
-            variant='ghost'
-            size='sm'
-            onClick={() => onAdd(groupKey)}
-            className='h-6 px-2'
-          >
-            <PlusCircle className='h-4 w-4 mr-1' />
-            Add Key
-          </Button>
+          <AddKeyDialog
+            parentPath={groupKey}
+            onAdd={onAdd}
+            trigger={
+              <Button variant='ghost' size='sm' className='h-6 px-2'>
+                <PlusCircle className='h-4 w-4 mr-1' />
+                Add Key
+              </Button>
+            }
+          />
         </div>
       )}
       <div className='space-y-2 px-4'>
@@ -244,9 +246,22 @@ const TranslationViewer = ({
     onDataChange(newData);
   };
 
-  const handleAdd = (parentPath: string) => {
-    const newKey = parentPath ? `${parentPath}.newKey` : 'newKey';
-    const newFlatData = { ...flatData, [newKey]: '' };
+  // const handleAdd = (parentPath: string) => {
+  //   const newKey = parentPath ? `${parentPath}.newKey` : 'newKey';
+  //   const newFlatData = { ...flatData, [newKey]: '' };
+  //   const newData = unflattenObject(newFlatData);
+  //   onDataChange(newData);
+  // };
+
+  const handleAdd = (key: string, value: string | object) => {
+    const newFlatData = { ...flatData };
+    if (typeof value === 'string') {
+      newFlatData[key] = value;
+    } else {
+      // For nested objects, we add an empty string as a placeholder
+      // This ensures the key shows up in the UI as a parent key
+      newFlatData[`${key}.placeholder`] = '';
+    }
     const newData = unflattenObject(newFlatData);
     onDataChange(newData);
   };
@@ -260,15 +275,15 @@ const TranslationViewer = ({
             <span className='text-sm text-gray-500'>
               {Object.keys(flatData).length} keys
             </span>
-            <Button
-              onClick={() => handleAdd('')}
-              size='sm'
-              variant='outline'
-              className='mr-2'
-            >
-              <Plus className='h-4 w-4 mr-2' />
-              Add Root Key
-            </Button>
+            <AddKeyDialog
+              onAdd={handleAdd}
+              trigger={
+                <Button size='sm' variant='outline' className='mr-2'>
+                  <Plus className='h-4 w-4 mr-2' />
+                  Add Root Key
+                </Button>
+              }
+            />
             <Button onClick={onSave} size='sm' variant='default'>
               <Save className='h-4 w-4 mr-2' />
               Save
@@ -405,7 +420,9 @@ export default function Home() {
     <div className={cn('p-6 flex flex-col gap-4', 'w-full')}>
       <Menubar className='px-4 flex flex-row gap-4'>
         <h4 className='text-lg font-semibold'>Trans Diff</h4>
-        <p className='text-sm text-gray-500'>A tool to compare and edit translations</p>
+        <p className='text-sm text-gray-500'>
+          A tool to compare and edit translations
+        </p>
       </Menubar>
       {error && (
         <Alert variant='destructive' className='mb-6'>
