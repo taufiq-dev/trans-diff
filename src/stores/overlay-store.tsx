@@ -9,6 +9,7 @@ type OverlayStoreContext = {
 };
 
 type OpenAddKeyDialogEvent = { onAdd: OnAddFunction; parentPath?: string };
+// biome-ignore lint/complexity/noBannedTypes: <explanation>
 type CloseAddKeyDialogEvent = {};
 
 type OverlayEvents = {
@@ -27,7 +28,7 @@ export const overlayStore = createStore<
   // Initial context
   context: {
     isAddKeyDialogOpen: false,
-    onAdd: (key: string, value: string | object) => {},
+    onAdd: (_key: string, _value: string | object) => {},
   },
   // Transitions
   on: {
@@ -41,7 +42,7 @@ export const overlayStore = createStore<
     }),
     closeAddKeyDialog: (_) => ({
       isAddKeyDialogOpen: false,
-      onAdd: (key: string, value: string | object) => {},
+      onAdd: (_key: string, _value: string | object) => {},
       parentPath: '',
     }),
   },
