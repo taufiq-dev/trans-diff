@@ -1,46 +1,43 @@
 import { useState } from 'react';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from '@/components/ui/dialog';
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { overlayStore } from '@/stores/overlay-store';
+import { useSelector } from '@xstate/store/react';
 
-const AddKeyDialog = ({
-  parentPath = '',
-  onAdd,
-  trigger,
-}: {
-  parentPath?: string;
-  onAdd: (key: string, value: string | object) => void;
-  trigger: React.ReactNode;
-}) => {
-  const [open, setOpen] = useState(false);
+const AddKeyDialog = () => {
+  const onAdd = useSelector(overlayStore, (state) => state.context.onAdd);
+  const parentPath = useSelector(
+    overlayStore,
+    (state) => state.context.parentPath,
+  );
+  const closeAddKeyDialog = () =>
+    overlayStore.send({ type: 'closeAddKeyDialog' });
+
   const [formState, setFormState] = useState({
     type: 'value' as 'value' | 'object',
     key: '',
     value: '',
   });
 
-  const handleOpenChange = (newOpen: boolean) => {
-    if (!newOpen) {
-      // Only reset the form after the dialog has finished closing
-      requestAnimationFrame(() => {
-        setFormState({
-          type: 'value',
-          key: '',
-          value: '',
-        });
-      });
-    }
-    setOpen(newOpen);
-  };
+  // const handleOpenChange = () => {
+  //   requestAnimationFrame(() => {
+  //     setFormState({
+  //       type: 'value',
+  //       key: '',
+  //       value: '',
+  //     });
+  //   });
+  // };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,21 +51,19 @@ const AddKeyDialog = ({
       onAdd(fullKey, {});
     }
 
-    setOpen(false);
+    closeAddKeyDialog();
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className='sm:max-w-md'>
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle>
-              Add New {parentPath ? 'Nested Key' : 'Root Key'}
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className='grid gap-6 py-4'>
+    <Card className='w-[28rem] h-fit m-auto'>
+      <form onSubmit={handleSubmit}>
+        <CardHeader>
+          <CardTitle className='text-lg'>
+            Add New {parentPath ? 'Nested Key' : 'Root Key'}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className='sm:max-w-md'>
+          <div className='grid gap-6'>
             <div className='grid gap-2'>
               <Label htmlFor='key'>Key Name</Label>
               <Input
@@ -126,20 +121,15 @@ const AddKeyDialog = ({
               </div>
             )}
           </div>
-
-          <DialogFooter>
-            <Button
-              type='button'
-              variant='outline'
-              onClick={() => setOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button type='submit'>Add Key</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </CardContent>
+        <CardFooter className='flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2'>
+          <Button type='button' variant='outline' onClick={closeAddKeyDialog}>
+            Cancel
+          </Button>
+          <Button type='submit'>Add Key</Button>
+        </CardFooter>
+      </form>
+    </Card>
   );
 };
 
