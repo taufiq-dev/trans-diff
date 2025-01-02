@@ -22,22 +22,34 @@ const AddKeyDialog = ({
   trigger: React.ReactNode;
 }) => {
   const [open, setOpen] = useState(false);
-  const [type, setType] = useState<'value' | 'object'>('value');
-  const [key, setKey] = useState('');
-  const [value, setValue] = useState('');
+  const [formState, setFormState] = useState({
+    type: 'value' as 'value' | 'object',
+    key: '',
+    value: '',
+  });
 
-  const resetForm = () => {
-    setKey('');
-    setValue('');
-    setType('value');
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen) {
+      // Only reset the form after the dialog has finished closing
+      requestAnimationFrame(() => {
+        setFormState({
+          type: 'value',
+          key: '',
+          value: '',
+        });
+      });
+    }
+    setOpen(newOpen);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const fullKey = parentPath ? `${parentPath}.${key}` : key;
+    const fullKey = parentPath
+      ? `${parentPath}.${formState.key}`
+      : formState.key;
 
-    if (type === 'value') {
-      onAdd(fullKey, value);
+    if (formState.type === 'value') {
+      onAdd(fullKey, formState.value);
     } else {
       onAdd(fullKey, {});
     }
@@ -46,15 +58,7 @@ const AddKeyDialog = ({
   };
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(newOpen) => {
-        if (!newOpen) {
-          resetForm();
-        }
-        setOpen(newOpen);
-      }}
-    >
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className='sm:max-w-md'>
         <form onSubmit={handleSubmit}>
@@ -69,8 +73,10 @@ const AddKeyDialog = ({
               <Label htmlFor='key'>Key Name</Label>
               <Input
                 id='key'
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
+                value={formState.key}
+                onChange={(e) =>
+                  setFormState((prev) => ({ ...prev, key: e.target.value }))
+                }
                 placeholder='Enter key name'
                 className='w-full'
                 required
@@ -80,8 +86,13 @@ const AddKeyDialog = ({
             <div className='grid gap-2'>
               <Label>Key Type</Label>
               <RadioGroup
-                value={type}
-                onValueChange={(value) => setType(value as 'value' | 'object')}
+                value={formState.type}
+                onValueChange={(value) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    type: value as 'value' | 'object',
+                  }))
+                }
                 className='grid gap-2'
               >
                 <div className='flex items-center space-x-2'>
@@ -95,16 +106,22 @@ const AddKeyDialog = ({
               </RadioGroup>
             </div>
 
-            {type === 'value' && (
+            {formState.type === 'value' && (
               <div className='grid gap-2'>
                 <Label htmlFor='value'>Value</Label>
                 <Input
                   id='value'
-                  value={value}
-                  onChange={(e) => setValue(e.target.value)}
+                  value={formState.value}
+                  onChange={(e) =>
+                    setFormState((prev) => ({
+                      ...prev,
+                      key: prev.key,
+                      value: e.target.value,
+                    }))
+                  }
                   placeholder='Enter value'
                   className='w-full'
-                  required={type === 'value'}
+                  required={formState.type === 'value'}
                 />
               </div>
             )}
