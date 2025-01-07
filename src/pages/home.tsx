@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent } from 'react';
+import { useState, type ChangeEvent } from 'react';
 import { Plus, PlusCircle, Save, Trash2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -77,6 +77,41 @@ const unflattenObject = (obj: Record<string, string>): TranslationData => {
   return result;
 };
 
+const TranslationHeader = ({
+  fileName,
+  keyCount,
+  onAddKey,
+  onSave,
+  onRemove,
+}: {
+  fileName: string;
+  keyCount: number;
+  onAddKey: () => void;
+  onSave: () => void;
+  onRemove: () => void;
+}) => (
+  <div className='flex items-center justify-between p-4 border-b'>
+    <div className='flex flex-col'>
+      <h2 className='text-lg font-semibold'>{fileName}</h2>
+      <span className='text-sm text-gray-500'>{keyCount} keys</span>
+    </div>
+    <div className='flex items-center gap-2'>
+      <Button size='sm' variant='outline' onClick={onAddKey}>
+        <Plus className='h-4 w-4 mr-2' />
+        Add Key
+      </Button>
+      <Button onClick={onSave} size='sm' variant='default'>
+        <Save className='h-4 w-4 mr-2' />
+        Save
+      </Button>
+      <Button onClick={onRemove} size='sm' variant='destructive'>
+        <Trash2 className='h-4 w-4 mr-2' />
+        Remove
+      </Button>
+    </div>
+  </div>
+);
+
 const TranslationGroup = ({
   groupKey,
   entries,
@@ -106,9 +141,9 @@ const TranslationGroup = ({
   ]);
 
   return (
-    <div className='mb-4 px-4'>
+    <div className='mb-4'>
       {groupKey && (
-        <div className='font-medium text-sm text-gray-600 mb-2 pl-2 flex justify-between items-center'>
+        <div className='font-medium text-sm text-gray-600 mb-2 flex justify-between items-center'>
           <span>{groupKey}</span>
           <Button
             variant='ghost'
@@ -121,7 +156,7 @@ const TranslationGroup = ({
           </Button>
         </div>
       )}
-      <div className='space-y-2 px-4'>
+      <div className='space-y-2'>
         {Array.from(allKeys)
           .sort()
           .map((key) => {
@@ -133,9 +168,10 @@ const TranslationGroup = ({
             return (
               <div
                 key={key}
-                className={`p-3 rounded-md relative overflow-hidden
-                  ${isMissing ? 'bg-red-50' : 'bg-slate-100'}
-                `}
+                className={cn(
+                  'p-3 rounded-md relative overflow-hidden',
+                  isMissing ? 'bg-red-50' : 'bg-slate-100',
+                )}
               >
                 {isMissing && (
                   <div
@@ -204,8 +240,6 @@ const TranslationViewer = ({
   data,
   otherFilesData,
   fileName,
-  containerRef,
-  onScroll,
   onSave,
   onDataChange,
   onRemove,
@@ -213,8 +247,6 @@ const TranslationViewer = ({
   data: TranslationData;
   otherFilesData: TranslationData[];
   fileName: string;
-  containerRef: (node: HTMLDivElement | null) => void;
-  onScroll: (scrollTop: number) => void;
   onSave: () => void;
   onDataChange: (newData: TranslationData) => void;
   onRemove: () => void;
@@ -256,8 +288,6 @@ const TranslationViewer = ({
     if (typeof value === 'string') {
       newFlatData[key] = value;
     } else {
-      // For nested objects, we add an empty string as a placeholder
-      // This ensures the key shows up in the UI as a parent key
       newFlatData[`${key}.placeholder`] = '';
     }
     const newData = unflattenObject(newFlatData);
@@ -271,47 +301,16 @@ const TranslationViewer = ({
     });
 
   return (
-    <Card className='p-4'>
-      <CardContent>
-        <div className='flex items-center justify-between mb-4'>
-          <h2 className='text-lg font-semibold'>{fileName}</h2>
-          <div className='flex items-center gap-4'>
-            <span className='text-sm text-gray-500'>
-              {Object.keys(flatData).length} keys
-            </span>
-            <Button
-              size='sm'
-              variant='outline'
-              className='mr-2'
-              onClick={openAddKeyDialog}
-            >
-              <Plus className='h-4 w-4 mr-2' />
-              Add Root Key
-            </Button>
-            {/* <AddKeyDialog
-              onAdd={handleAdd}
-              trigger={
-                <Button size='sm' variant='outline' className='mr-2'>
-                  <Plus className='h-4 w-4 mr-2' />
-                  Add Root Key
-                </Button>
-              }
-            /> */}
-            <Button onClick={onSave} size='sm' variant='default'>
-              <Save className='h-4 w-4 mr-2' />
-              Save
-            </Button>
-            <Button onClick={onRemove} size='sm' variant='destructive'>
-              <Trash2 className='h-4 w-4 mr-2' />
-              Remove
-            </Button>
-          </div>
-        </div>
-        <div
-          ref={containerRef}
-          onScroll={(e) => onScroll(e.currentTarget.scrollTop)}
-          className={cn('overflow-y-auto', 'max-h-[calc(100vh-15.5rem)]')}
-        >
+    <Card className='h-full flex flex-col'>
+      <TranslationHeader
+        fileName={fileName}
+        keyCount={Object.keys(flatData).length}
+        onAddKey={openAddKeyDialog}
+        onSave={onSave}
+        onRemove={onRemove}
+      />
+      <CardContent className='flex-1 overflow-hidden'>
+        <div className='h-full'>
           {Array.from(allGroupKeys)
             .sort()
             .map((groupKey) => (
@@ -337,24 +336,6 @@ const TranslationViewer = ({
 export default function Home() {
   const [files, setFiles] = useState<TranslationFile[]>([]);
   const [error, setError] = useState<string | null>(null);
-
-  const scrollRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const isScrolling = useRef(false);
-
-  const handleScroll = (scrollTop: number, index: number) => {
-    if (isScrolling.current) return;
-    isScrolling.current = true;
-
-    scrollRefs.current.forEach((ref, i) => {
-      if (i !== index && ref) {
-        ref.scrollTop = scrollTop;
-      }
-    });
-
-    requestAnimationFrame(() => {
-      isScrolling.current = false;
-    });
-  };
 
   const handleSave = (data: TranslationData, fileName: string) => {
     const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -400,12 +381,7 @@ export default function Home() {
   };
 
   const renderFileUploadButton = () => (
-    <div
-      className={cn(
-        'flex flex-col items-center justify-center min-w-[40rem] self-center border-dashed border-2 rounded-lg has-[:hover]:border-blue-200',
-        'min-h-[calc(100vh-9rem)]',
-      )}
-    >
+    <div className='flex flex-col items-center justify-center border-dashed max-h-60 border-2 rounded-lg hover:border-blue-200 p-4'>
       <input
         type='file'
         accept='.json'
@@ -425,52 +401,41 @@ export default function Home() {
 
   const handleRemoveFile = (index: number) => {
     setFiles((prev) => prev.filter((_, i) => i !== index));
-    // Clean up the scroll ref for the removed file
-    scrollRefs.current = scrollRefs.current.filter((_, i) => i !== index);
   };
 
   return (
-    <div className={cn('p-6 flex flex-col gap-4', 'w-full')}>
+    <div className='h-screen flex flex-col'>
       <Menubar className='px-4 flex flex-row gap-4'>
         <h4 className='text-lg font-semibold'>Trans Diff</h4>
         <p className='text-sm text-gray-500'>
           A tool to compare and edit translations
         </p>
       </Menubar>
+
       {error && (
-        <Alert variant='destructive' className='mb-6'>
+        <Alert variant='destructive' className='m-4'>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
-      <div
-        className={cn(
-          'w-full mx-auto flex flex-row gap-8 overflow-x-auto pb-4',
-          files.length > 0 ? 'justify-start' : 'justify-center',
-        )}
-      >
-        {files.map((file, index) => (
-          <div
-            key={`${file.fileName}-${index}`}
-            className={cn('min-w-[40rem]')}
-          >
-            <TranslationViewer
-              data={file.data}
-              otherFilesData={files
-                .filter((_, i) => i !== index)
-                .map((f) => f.data)}
-              fileName={file.fileName}
-              containerRef={(el: HTMLDivElement | null) => {
-                scrollRefs.current[index] = el;
-              }}
-              onScroll={(scrollTop) => handleScroll(scrollTop, index)}
-              onSave={() => handleSave(file.data, file.fileName)}
-              onDataChange={(newData) => handleDataChange(index, newData)}
-              onRemove={() => handleRemoveFile(index)}
-            />
-          </div>
-        ))}
-        {renderFileUploadButton()}
+      <div className='flex-1 p-4 overflow-auto'>
+        <div className='flex flex-row'>
+          {files.map((file, index) => (
+            <div key={`${file.fileName}-${index}`}>
+              <TranslationViewer
+                data={file.data}
+                otherFilesData={files
+                  .filter((_, i) => i !== index)
+                  .map((f) => f.data)}
+                fileName={file.fileName}
+                onSave={() => handleSave(file.data, file.fileName)}
+                onDataChange={(newData) => handleDataChange(index, newData)}
+                onRemove={() => handleRemoveFile(index)}
+              />
+            </div>
+          ))}
+          {renderFileUploadButton()}
+        </div>
       </div>
     </div>
   );
