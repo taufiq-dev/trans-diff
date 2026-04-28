@@ -1,371 +1,554 @@
-import { useState, type ChangeEvent } from 'react';
-import { Plus, PlusCircle, Save, Trash2 } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { useMemo, useState, type ChangeEvent, type KeyboardEvent } from 'react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  Plus,
+  Save,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Menubar } from '@/components/ui/menubar';
 import { cn } from '@/lib/utils';
-import { overlayStore } from '@/stores/overlay-store';
+
+type JsonPrimitive = string | number | boolean | null;
+type JsonArray = JsonValue[];
+type JsonObject = { [key: string]: JsonValue };
+type JsonValue = JsonPrimitive | JsonArray | JsonObject;
+type PathSegment = string | number;
+type JsonPath = PathSegment[];
+type ValueKind = 'string' | 'number' | 'boolean' | 'null' | 'object' | 'array';
 
 type TranslationFile = {
-  data: TranslationData;
+  id: string;
+  data: JsonValue;
   fileName: string;
 };
 
-type TranslationData = {
-  [key: string]: string | TranslationData;
+type AddDraft = {
+  key: string;
+  kind: ValueKind;
 };
 
-const flattenObject = (
-  obj: TranslationData,
-  prefix = '',
-): Record<string, string> => {
-  return Object.keys(obj).reduce((acc: Record<string, string>, key: string) => {
-    const value = obj[key];
-    const newKey = prefix ? `${prefix}.${key}` : key;
+const MISSING = Symbol('missing');
+type Missing = typeof MISSING;
 
-    if (typeof value === 'object' && value !== null) {
-      Object.assign(acc, flattenObject(value, newKey));
-    } else {
-      acc[newKey] = value as string;
-    }
+const VALUE_KINDS: ValueKind[] = [
+  'string',
+  'number',
+  'boolean',
+  'null',
+  'object',
+  'array',
+];
 
-    return acc;
-  }, {});
-};
+const isJsonObject = (value: unknown): value is JsonObject =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const getParentPath = (path: string): string => {
-  const parts = path.split('.');
-  return parts.slice(0, -1).join('.');
-};
-
-const groupByParent = (
-  flatData: Record<string, string>,
-): Record<string, Record<string, string>> => {
-  const groups: Record<string, Record<string, string>> = {};
-
-  for (const [key, value] of Object.entries(flatData)) {
-    const parentPath = getParentPath(key);
-    if (!groups[parentPath]) {
-      groups[parentPath] = {};
-    }
-    groups[parentPath][key] = value;
+const isJsonValue = (value: unknown): value is JsonValue => {
+  if (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
+    return Number.isFinite(value) || typeof value !== 'number';
   }
 
-  return groups;
-};
-
-const unflattenObject = (obj: Record<string, string>): TranslationData => {
-  const result: TranslationData = {};
-
-  for (const [key, value] of Object.entries(obj)) {
-    const parts = key.split('.');
-    let current: Record<string, unknown> = result;
-
-    for (let i = 0; i < parts.length - 1; i++) {
-      const part = parts[i];
-      if (!(part in current)) {
-        current[part] = {};
-      }
-      current = current[part] as Record<string, unknown>;
-    }
-
-    current[parts[parts.length - 1]] = value;
+  if (Array.isArray(value)) {
+    return value.every(isJsonValue);
   }
 
-  return result;
+  if (isJsonObject(value)) {
+    return Object.values(value).every(isJsonValue);
+  }
+
+  return false;
 };
 
-const TranslationHeader = ({
-  fileName,
-  keyCount,
-  onAddKey,
-  onSave,
-  onRemove,
-}: {
-  fileName: string;
-  keyCount: number;
-  onAddKey: () => void;
-  onSave: () => void;
-  onRemove: () => void;
-}) => (
-  <div className='flex items-center justify-between p-4 border-b'>
-    <div className='flex flex-col'>
-      <h2 className='text-lg font-semibold'>{fileName}</h2>
-      <span className='text-sm text-gray-500'>{keyCount} keys</span>
-    </div>
-    <div className='flex items-center gap-2'>
-      <Button size='sm' variant='outline' onClick={onAddKey}>
-        <Plus className='h-4 w-4 mr-2' />
-        Add Key
-      </Button>
-      <Button onClick={onSave} size='sm' variant='default'>
-        <Save className='h-4 w-4 mr-2' />
-        Save
-      </Button>
-      <Button onClick={onRemove} size='sm' variant='destructive'>
-        <Trash2 className='h-4 w-4 mr-2' />
-        Remove
-      </Button>
-    </div>
-  </div>
-);
+const cloneJson = <T extends JsonValue>(value: T): T =>
+  JSON.parse(JSON.stringify(value)) as T;
 
-const TranslationGroup = ({
-  groupKey,
-  entries,
-  otherFilesEntries = [],
-  onValueChange,
-  onKeyChange,
-  onRemove,
-  onAdd,
-}: {
-  groupKey: string;
-  entries: Record<string, string>;
-  otherFilesEntries: Record<string, string>[];
-  onValueChange: (key: string, value: string) => void;
-  onKeyChange: (oldKey: string, newKey: string) => void;
-  onRemove: (key: string) => void;
-  onAdd: (key: string, value: string | object) => void;
-}) => {
-  const openAddKeyDialog = () =>
-    overlayStore.send({
-      type: 'openAddKeyDialog',
-      onAdd,
-      parentPath: groupKey,
-    });
-  const allKeys = new Set([
-    ...Object.keys(entries),
-    ...otherFilesEntries.flatMap((entries) => Object.keys(entries)),
-  ]);
-
-  return (
-    <div className='mb-4'>
-      {groupKey && (
-        <div className='font-medium text-sm text-gray-600 mb-2 flex justify-between items-center'>
-          <span>{groupKey}</span>
-          <Button
-            variant='ghost'
-            size='sm'
-            className='h-6 px-2'
-            onClick={openAddKeyDialog}
-          >
-            <PlusCircle className='h-4 w-4 mr-1' />
-            Add Key
-          </Button>
-        </div>
-      )}
-      <div className='space-y-2'>
-        {Array.from(allKeys)
-          .sort()
-          .map((key) => {
-            const hasKey = key in entries;
-            const value = entries[key];
-            const isMissing = !hasKey;
-            const keyName = key.split('.').pop() || '';
-
-            return (
-              <div
-                key={key}
-                className={cn(
-                  'p-3 rounded-md relative overflow-hidden',
-                  isMissing ? 'bg-red-50' : 'bg-slate-100',
-                )}
-              >
-                {isMissing && (
-                  <div
-                    className='absolute inset-0 opacity-30'
-                    style={{
-                      backgroundImage: `repeating-linear-gradient(
-                        -45deg,
-                        transparent,
-                        transparent 8px,
-                        rgba(239, 68, 68, 0.5) 8px,
-                        rgba(239, 68, 68, 0.5) 16px
-                      )`,
-                    }}
-                  />
-                )}
-                <div className='relative z-10 space-y-2'>
-                  <div className='grid grid-cols-[35px_1fr_30px] gap-2 items-center'>
-                    <p className='text-xs font-medium text-gray-500'>Key</p>
-                    <Input
-                      value={keyName}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        const newKey = getParentPath(key)
-                          ? `${getParentPath(key)}.${e.target.value}`
-                          : e.target.value;
-                        onKeyChange(key, newKey);
-                      }}
-                      className='text-sm font-medium bg-slate-200 border-gray-300'
-                    />
-                    {!isMissing && (
-                      <Button
-                        variant='ghost'
-                        size='sm'
-                        onClick={() => onRemove(key)}
-                        className='h-8 w-8 p-0'
-                      >
-                        <Trash2 className='h-4 w-4 text-red-500' />
-                      </Button>
-                    )}
-                  </div>
-                  <div className='grid grid-cols-[35px_1fr_30px] gap-2 items-center'>
-                    <p className='text-xs font-medium text-gray-500'>Value</p>
-                    <Input
-                      value={value || ''}
-                      placeholder={isMissing ? 'Add translation' : ''}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        if (e.target.value === '') {
-                          onRemove(key);
-                        } else {
-                          onValueChange(key, e.target.value);
-                        }
-                      }}
-                      className='text-sm bg-white'
-                    />
-                    <div /> {/* Empty div to maintain grid alignment */}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-      </div>
-    </div>
-  );
+const createDefaultValue = (kind: ValueKind): JsonValue => {
+  switch (kind) {
+    case 'array':
+      return [];
+    case 'boolean':
+      return false;
+    case 'null':
+      return null;
+    case 'number':
+      return 0;
+    case 'object':
+      return {};
+    case 'string':
+      return '';
+  }
 };
 
-const TranslationViewer = ({
-  data,
-  otherFilesData,
-  fileName,
-  onSave,
-  onDataChange,
-  onRemove,
-}: {
-  data: TranslationData;
-  otherFilesData: TranslationData[];
-  fileName: string;
-  onSave: () => void;
-  onDataChange: (newData: TranslationData) => void;
-  onRemove: () => void;
-}) => {
-  const flatData = flattenObject(data);
-  const groups = groupByParent(flatData);
-  const otherGroups = otherFilesData.map((data) =>
-    groupByParent(flattenObject(data)),
-  );
-  const allGroupKeys = new Set([
-    ...Object.keys(groups),
-    ...otherGroups.flatMap((group) => Object.keys(group)),
-  ]);
+const getValueKind = (value: JsonValue): ValueKind => {
+  if (Array.isArray(value)) {
+    return 'array';
+  }
 
-  const handleValueChange = (key: string, value: string) => {
-    const newFlatData = { ...flatData, [key]: value };
-    const newData = unflattenObject(newFlatData);
-    onDataChange(newData);
-  };
+  if (isJsonObject(value)) {
+    return 'object';
+  }
 
-  const handleKeyChange = (oldKey: string, newKey: string) => {
-    const newFlatData = { ...flatData };
-    const value = newFlatData[oldKey];
-    delete newFlatData[oldKey];
-    newFlatData[newKey] = value;
-    const newData = unflattenObject(newFlatData);
-    onDataChange(newData);
-  };
+  if (value === null) {
+    return 'null';
+  }
 
-  const handleRemove = (key: string) => {
-    const newFlatData = { ...flatData };
-    delete newFlatData[key];
-    const newData = unflattenObject(newFlatData);
-    onDataChange(newData);
-  };
+  if (typeof value === 'string') {
+    return 'string';
+  }
 
-  const handleAdd = (key: string, value: string | object) => {
-    const newFlatData = { ...flatData };
+  if (typeof value === 'number') {
+    return 'number';
+  }
+
+  return 'boolean';
+};
+
+const coerceValue = (value: JsonValue | Missing, kind: ValueKind): JsonValue => {
+  if (value === MISSING) {
+    return createDefaultValue(kind);
+  }
+
+  if (kind === 'string') {
+    return typeof value === 'string' ? value : JSON.stringify(value);
+  }
+
+  if (kind === 'number') {
+    if (typeof value === 'number') {
+      return value;
+    }
+
     if (typeof value === 'string') {
-      newFlatData[key] = value;
-    } else {
-      newFlatData[`${key}.placeholder`] = '';
+      const numericValue = Number(value);
+      return Number.isFinite(numericValue) ? numericValue : 0;
     }
-    const newData = unflattenObject(newFlatData);
-    onDataChange(newData);
-  };
 
-  const openAddKeyDialog = () =>
-    overlayStore.send({
-      type: 'openAddKeyDialog',
-      onAdd: handleAdd,
-    });
+    return 0;
+  }
 
-  return (
-    <Card className='h-full flex flex-col'>
-      <TranslationHeader
-        fileName={fileName}
-        keyCount={Object.keys(flatData).length}
-        onAddKey={openAddKeyDialog}
-        onSave={onSave}
-        onRemove={onRemove}
-      />
-      <CardContent className='flex-1 overflow-hidden'>
-        <div className='h-full'>
-          {Array.from(allGroupKeys)
-            .sort()
-            .map((groupKey) => (
-              <TranslationGroup
-                key={groupKey}
-                groupKey={groupKey}
-                entries={groups[groupKey] || {}}
-                otherFilesEntries={otherGroups.map(
-                  (group) => group[groupKey] || {},
-                )}
-                onValueChange={handleValueChange}
-                onKeyChange={handleKeyChange}
-                onRemove={handleRemove}
-                onAdd={handleAdd}
-              />
-            ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
+  if (kind === 'boolean') {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      return value.toLowerCase() === 'true';
+    }
+
+    return Boolean(value);
+  }
+
+  return createDefaultValue(kind);
 };
+
+const getValueAtPath = (root: JsonValue, path: JsonPath): JsonValue | Missing => {
+  let current: JsonValue | undefined = root;
+
+  for (const segment of path) {
+    if (typeof segment === 'number') {
+      if (!Array.isArray(current) || segment >= current.length) {
+        return MISSING;
+      }
+      current = current[segment];
+      continue;
+    }
+
+    if (!isJsonObject(current) || !(segment in current)) {
+      return MISSING;
+    }
+    current = current[segment];
+  }
+
+  return current ?? MISSING;
+};
+
+const defaultContainerFor = (segment: PathSegment | undefined): JsonValue =>
+  typeof segment === 'number' ? [] : {};
+
+const setValueAtPath = (
+  current: JsonValue | Missing,
+  path: JsonPath,
+  value: JsonValue,
+): JsonValue => {
+  if (path.length === 0) {
+    return value;
+  }
+
+  const [segment, ...rest] = path;
+
+  if (typeof segment === 'number') {
+    const next = Array.isArray(current) ? [...current] : [];
+    next[segment] = setValueAtPath(
+      next[segment] ?? defaultContainerFor(rest[0]),
+      rest,
+      value,
+    );
+    return next;
+  }
+
+  const next = isJsonObject(current) ? { ...current } : {};
+  next[segment] = setValueAtPath(
+    next[segment] ?? defaultContainerFor(rest[0]),
+    rest,
+    value,
+  );
+  return next;
+};
+
+const removeValueAtPath = (current: JsonValue, path: JsonPath): JsonValue => {
+  if (path.length === 0) {
+    return {};
+  }
+
+  const [segment, ...rest] = path;
+
+  if (typeof segment === 'number') {
+    if (!Array.isArray(current)) {
+      return current;
+    }
+
+    const next = [...current];
+    if (rest.length === 0) {
+      next.splice(segment, 1);
+    } else {
+      next[segment] = removeValueAtPath(next[segment], rest);
+    }
+    return next;
+  }
+
+  if (!isJsonObject(current) || !(segment in current)) {
+    return current;
+  }
+
+  const next = { ...current };
+  if (rest.length === 0) {
+    delete next[segment];
+  } else {
+    next[segment] = removeValueAtPath(next[segment], rest);
+  }
+  return next;
+};
+
+const renameKeyAtPath = (
+  current: JsonValue,
+  path: JsonPath,
+  nextKey: string,
+): JsonValue => {
+  const oldKey = path[path.length - 1];
+  const parentPath = path.slice(0, -1);
+
+  if (typeof oldKey !== 'string' || !nextKey.trim()) {
+    return current;
+  }
+
+  const parent = getValueAtPath(current, parentPath);
+  if (!isJsonObject(parent) || !(oldKey in parent)) {
+    return current;
+  }
+
+  if (nextKey !== oldKey && nextKey in parent) {
+    return current;
+  }
+
+  const renamedParent = Object.entries(parent).reduce<JsonObject>(
+    (acc, [key, value]) => {
+      acc[key === oldKey ? nextKey : key] = value;
+      return acc;
+    },
+    {},
+  );
+
+  return setValueAtPath(current, parentPath, renamedParent);
+};
+
+const moveArrayItem = (
+  current: JsonValue,
+  parentPath: JsonPath,
+  index: number,
+  direction: -1 | 1,
+): JsonValue => {
+  const parent = getValueAtPath(current, parentPath);
+  const nextIndex = index + direction;
+
+  if (!Array.isArray(parent) || nextIndex < 0 || nextIndex >= parent.length) {
+    return current;
+  }
+
+  const next = [...parent];
+  const [item] = next.splice(index, 1);
+  next.splice(nextIndex, 0, item);
+  return setValueAtPath(current, parentPath, next);
+};
+
+const insertArrayItem = (
+  current: JsonValue,
+  path: JsonPath,
+  value: JsonValue,
+): JsonValue => {
+  const existing = getValueAtPath(current, path);
+  const next = Array.isArray(existing) ? [...existing, value] : [value];
+  return setValueAtPath(current, path, next);
+};
+
+const duplicateValue = (
+  current: JsonValue,
+  parentPath: JsonPath,
+  index: number,
+): JsonValue => {
+  const parent = getValueAtPath(current, parentPath);
+
+  if (!Array.isArray(parent) || !(index in parent)) {
+    return current;
+  }
+
+  const next = [...parent];
+  next.splice(index + 1, 0, cloneJson(parent[index]));
+  return setValueAtPath(current, parentPath, next);
+};
+
+const stableStringify = (value: JsonValue): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(',')}]`;
+  }
+
+  if (isJsonObject(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+      .join(',')}}`;
+  }
+
+  return JSON.stringify(value);
+};
+
+const pathToKey = (path: JsonPath): string => JSON.stringify(path);
+
+const draftKey = (fileId: string, path: JsonPath): string =>
+  `${fileId}:${pathToKey(path)}`;
+
+const formatPath = (path: JsonPath): string => {
+  if (path.length === 0) {
+    return '$';
+  }
+
+  return path.reduce<string>((acc, segment) => {
+    if (typeof segment === 'number') {
+      return `${acc}[${segment}]`;
+    }
+
+    return `${acc}.${segment}`;
+  }, '$');
+};
+
+const formatSegment = (segment: PathSegment | undefined): string => {
+  if (segment === undefined) {
+    return 'Root';
+  }
+
+  return typeof segment === 'number' ? `[${segment}]` : segment;
+};
+
+const countLeaves = (value: JsonValue): number => {
+  if (Array.isArray(value)) {
+    return value.reduce<number>(
+      (total, item) => total + countLeaves(item),
+      0,
+    );
+  }
+
+  if (isJsonObject(value)) {
+    return Object.values(value).reduce<number>(
+      (total, item) => total + countLeaves(item),
+      0,
+    );
+  }
+
+  return 1;
+};
+
+const collectChildSegments = (
+  files: TranslationFile[],
+  path: JsonPath,
+): PathSegment[] => {
+  const segments = new Set<PathSegment>();
+
+  for (const file of files) {
+    const value = getValueAtPath(file.data, path);
+
+    if (Array.isArray(value)) {
+      value.forEach((_, index) => segments.add(index));
+    } else if (isJsonObject(value)) {
+      Object.keys(value).forEach((key) => segments.add(key));
+    }
+  }
+
+  return Array.from(segments).sort((a, b) => {
+    if (typeof a === 'number' && typeof b === 'number') {
+      return a - b;
+    }
+
+    if (typeof a === 'number') {
+      return -1;
+    }
+
+    if (typeof b === 'number') {
+      return 1;
+    }
+
+    return a.localeCompare(b);
+  });
+};
+
+const getSuggestedKind = (
+  files: TranslationFile[],
+  path: JsonPath,
+): ValueKind => {
+  for (const file of files) {
+    const value = getValueAtPath(file.data, path);
+    if (value !== MISSING) {
+      return getValueKind(value);
+    }
+  }
+
+  return 'string';
+};
+
+const getPathStatus = (
+  files: TranslationFile[],
+  path: JsonPath,
+): { label: string; tone: 'default' | 'danger' | 'warning' | 'success' } => {
+  const values = files.map((file) => getValueAtPath(file.data, path));
+  const missingCount = values.filter((value) => value === MISSING).length;
+
+  if (missingCount === values.length) {
+    return { label: 'Missing', tone: 'danger' };
+  }
+
+  if (missingCount > 0) {
+    return { label: `${missingCount} missing`, tone: 'warning' };
+  }
+
+  const signatures = new Set(
+    values.map((value) => stableStringify(value as JsonValue)),
+  );
+
+  if (signatures.size > 1) {
+    return { label: 'Different', tone: 'warning' };
+  }
+
+  return { label: 'Synced', tone: 'success' };
+};
+
+function KindSelect({
+  value,
+  onChange,
+  label,
+}: {
+  value: ValueKind;
+  onChange: (kind: ValueKind) => void;
+  label: string;
+}) {
+  return (
+    <select
+      aria-label={label}
+      value={value}
+      onChange={(event) => onChange(event.target.value as ValueKind)}
+      className='h-8 rounded-3xl border border-transparent bg-input/50 px-3 text-xs font-medium text-muted-foreground outline-none transition-[color,box-shadow,background-color] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30'
+    >
+      {VALUE_KINDS.map((kind) => (
+        <option key={kind} value={kind}>
+          {kind}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function StatusBadge({
+  tone,
+  children,
+}: {
+  tone: 'default' | 'danger' | 'warning' | 'success';
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      className={cn(
+        'inline-flex h-6 items-center rounded-full px-2 text-xs font-medium',
+        tone === 'default' && 'bg-muted text-muted-foreground',
+        tone === 'danger' && 'bg-destructive/10 text-destructive',
+        tone === 'warning' && 'bg-amber-500/10 text-amber-700',
+        tone === 'success' && 'bg-emerald-500/10 text-emerald-700',
+      )}
+    >
+      {children}
+    </span>
+  );
+}
 
 export default function Home() {
   const [files, setFiles] = useState<TranslationFile[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
+    () => new Set(['[]']),
+  );
+  const [addDrafts, setAddDrafts] = useState<Record<string, AddDraft>>({});
+  const [renameDrafts, setRenameDrafts] = useState<Record<string, string>>({});
 
-  const handleSave = (data: TranslationData, fileName: string) => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: 'application/json',
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `modified_${fileName}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const gridTemplateColumns = useMemo(
+    () => `minmax(320px, 1.1fr) repeat(${files.length}, minmax(340px, 1fr))`,
+    [files.length],
+  );
+
+  const updateFileData = (fileId: string, updater: (data: JsonValue) => JsonValue) => {
+    setFiles((currentFiles) =>
+      currentFiles.map((file) =>
+        file.id === fileId ? { ...file, data: updater(file.data) } : file,
+      ),
+    );
   };
 
   const handleFileUpload = (event: ChangeEvent<HTMLInputElement>): void => {
-    const file = event.target.files?.[0];
-    if (file) {
+    const selectedFiles = Array.from(event.target.files ?? []);
+    event.target.value = '';
+
+    for (const file of selectedFiles) {
       const reader = new FileReader();
-      reader.onload = (e: ProgressEvent<FileReader>) => {
+      reader.onload = (readerEvent: ProgressEvent<FileReader>) => {
         try {
-          const json = JSON.parse(
-            e.target?.result as string,
-          ) as TranslationData;
-          setFiles((prev) => [...prev, { data: json, fileName: file.name }]);
+          const parsed = JSON.parse(String(readerEvent.target?.result ?? ''));
+
+          if (!isJsonValue(parsed)) {
+            throw new Error('The file contains values that are not valid JSON.');
+          }
+
+          setFiles((currentFiles) => [
+            ...currentFiles,
+            {
+              data: parsed,
+              fileName: file.name,
+              id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
+            },
+          ]);
+          setExpandedPaths((currentPaths) => new Set(currentPaths).add('[]'));
           setError(null);
-        } catch (err) {
+        } catch (uploadError) {
           setError(
             `Error parsing JSON from ${file.name}: ${
-              err instanceof Error ? err.message : 'Unknown error'
+              uploadError instanceof Error
+                ? uploadError.message
+                : 'Unknown error'
             }`,
           );
         }
@@ -374,69 +557,564 @@ export default function Home() {
     }
   };
 
-  const handleDataChange = (index: number, newData: TranslationData) => {
-    setFiles((prev) =>
-      prev.map((file, i) => (i === index ? { ...file, data: newData } : file)),
+  const handleSave = (file: TranslationFile) => {
+    const blob = new Blob([JSON.stringify(file.data, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `modified_${file.fileName}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const removeFile = (fileId: string) => {
+    setFiles((currentFiles) =>
+      currentFiles.filter((file) => file.id !== fileId),
     );
   };
 
-  const renderFileUploadButton = () => (
-    <div className='flex flex-col items-center justify-center border-dashed max-h-60 border-2 rounded-lg hover:border-blue-200 p-4'>
-      <input
-        type='file'
-        accept='.json'
-        onChange={handleFileUpload}
-        className='hidden'
-        id='file-upload'
-      />
-      <label
-        htmlFor='file-upload'
-        className='cursor-pointer w-32 h-32 rounded-full flex flex-col items-center justify-center gap-2 border-2 border-dashed hover:border-inherit'
-      >
-        <Plus className='h-12 w-12' />
-        <span className='text-sm'>Add JSON</span>
-      </label>
-    </div>
-  );
+  const toggleExpanded = (path: JsonPath) => {
+    const key = pathToKey(path);
+    setExpandedPaths((currentPaths) => {
+      const next = new Set(currentPaths);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
 
-  const handleRemoveFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
+  const updateValue = (fileId: string, path: JsonPath, value: JsonValue) => {
+    updateFileData(fileId, (data) => setValueAtPath(data, path, value));
+  };
+
+  const updateKind = (fileId: string, path: JsonPath, kind: ValueKind) => {
+    updateFileData(fileId, (data) => {
+      const value = getValueAtPath(data, path);
+      return setValueAtPath(data, path, coerceValue(value, kind));
+    });
+  };
+
+  const removeValue = (fileId: string, path: JsonPath) => {
+    updateFileData(fileId, (data) => removeValueAtPath(data, path));
+  };
+
+  const addObjectChild = (fileId: string, path: JsonPath) => {
+    const key = draftKey(fileId, path);
+    const draft = addDrafts[key] ?? { key: '', kind: 'string' };
+    const childKey = draft.key.trim();
+
+    if (!childKey) {
+      return;
+    }
+
+    updateFileData(fileId, (data) => {
+      const currentValue = getValueAtPath(data, path);
+      const nextObject = isJsonObject(currentValue) ? { ...currentValue } : {};
+      if (childKey in nextObject) {
+        return data;
+      }
+      nextObject[childKey] = createDefaultValue(draft.kind);
+      return setValueAtPath(data, path, nextObject);
+    });
+
+    setAddDrafts((drafts) => ({
+      ...drafts,
+      [key]: { ...draft, key: '' },
+    }));
+    setExpandedPaths((currentPaths) => new Set(currentPaths).add(pathToKey(path)));
+  };
+
+  const addArrayItem = (fileId: string, path: JsonPath) => {
+    const key = draftKey(fileId, path);
+    const draft = addDrafts[key] ?? { key: '', kind: 'string' };
+    updateFileData(fileId, (data) =>
+      insertArrayItem(data, path, createDefaultValue(draft.kind)),
+    );
+    setExpandedPaths((currentPaths) => new Set(currentPaths).add(pathToKey(path)));
+  };
+
+  const renameKey = (path: JsonPath) => {
+    const key = pathToKey(path);
+    const nextKey = (renameDrafts[key] ?? '').trim();
+
+    if (!nextKey) {
+      return;
+    }
+
+    setFiles((currentFiles) =>
+      currentFiles.map((file) => ({
+        ...file,
+        data: renameKeyAtPath(file.data, path, nextKey),
+      })),
+    );
+    setRenameDrafts((drafts) => {
+      const next = { ...drafts };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const renderPrimitiveEditor = (
+    file: TranslationFile,
+    path: JsonPath,
+    value: JsonPrimitive,
+  ) => {
+    const kind = getValueKind(value);
+
+    return (
+      <div className='flex min-w-0 flex-col gap-2'>
+        <div className='flex items-center gap-2'>
+          <KindSelect
+            label={`Type for ${file.fileName} ${formatPath(path)}`}
+            value={kind}
+            onChange={(nextKind) => updateKind(file.id, path, nextKind)}
+          />
+          {path.length > 0 && (
+            <Button
+              aria-label='Delete value'
+              size='icon-sm'
+              variant='ghost'
+              onClick={() => removeValue(file.id, path)}
+            >
+              <Trash2 />
+            </Button>
+          )}
+          {renderArrayItemActions(file, path)}
+        </div>
+
+        {kind === 'string' && (
+          <Input
+            value={value as string}
+            onChange={(event) => updateValue(file.id, path, event.target.value)}
+            placeholder='Empty string'
+          />
+        )}
+
+        {kind === 'number' && (
+          <Input
+            type='number'
+            value={String(value)}
+            onChange={(event) =>
+              updateValue(file.id, path, Number(event.target.value || 0))
+            }
+          />
+        )}
+
+        {kind === 'boolean' && (
+          <select
+            aria-label={`Boolean value for ${file.fileName} ${formatPath(path)}`}
+            value={String(value)}
+            onChange={(event) =>
+              updateValue(file.id, path, event.target.value === 'true')
+            }
+            className='h-9 rounded-3xl border border-transparent bg-input/50 px-3 text-sm outline-none transition-[color,box-shadow,background-color] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30'
+          >
+            <option value='true'>true</option>
+            <option value='false'>false</option>
+          </select>
+        )}
+
+        {kind === 'null' && (
+          <div className='flex h-9 items-center rounded-3xl bg-muted px-3 text-sm text-muted-foreground'>
+            null
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderArrayItemActions = (file: TranslationFile, path: JsonPath) => {
+    const segment = path[path.length - 1];
+
+    if (typeof segment !== 'number') {
+      return null;
+    }
+
+    const parentPath = path.slice(0, -1);
+    const parent = getValueAtPath(file.data, parentPath);
+    const itemCount = Array.isArray(parent) ? parent.length : 0;
+
+    return (
+      <div className='ml-auto flex items-center gap-1'>
+        <Button
+          aria-label='Move item up'
+          disabled={segment === 0}
+          size='icon-sm'
+          variant='ghost'
+          onClick={() =>
+            updateFileData(file.id, (data) =>
+              moveArrayItem(data, parentPath, segment, -1),
+            )
+          }
+        >
+          <ArrowUp />
+        </Button>
+        <Button
+          aria-label='Move item down'
+          disabled={segment >= itemCount - 1}
+          size='icon-sm'
+          variant='ghost'
+          onClick={() =>
+            updateFileData(file.id, (data) =>
+              moveArrayItem(data, parentPath, segment, 1),
+            )
+          }
+        >
+          <ArrowDown />
+        </Button>
+        <Button
+          aria-label='Duplicate item'
+          size='icon-sm'
+          variant='ghost'
+          onClick={() =>
+            updateFileData(file.id, (data) =>
+              duplicateValue(data, parentPath, segment),
+            )
+          }
+        >
+          <Copy />
+        </Button>
+      </div>
+    );
+  };
+
+  const renderCollectionEditor = (
+    file: TranslationFile,
+    path: JsonPath,
+    value: JsonArray | JsonObject,
+  ) => {
+    const key = draftKey(file.id, path);
+    const draft = addDrafts[key] ?? { key: '', kind: 'string' };
+    const kind = getValueKind(value);
+    const itemCount = Array.isArray(value)
+      ? value.length
+      : Object.keys(value).length;
+
+    return (
+      <div className='flex min-w-0 flex-col gap-3'>
+        <div className='flex items-center gap-2'>
+          <KindSelect
+            label={`Type for ${file.fileName} ${formatPath(path)}`}
+            value={kind}
+            onChange={(nextKind) => updateKind(file.id, path, nextKind)}
+          />
+          <StatusBadge tone='default'>
+            {itemCount} {Array.isArray(value) ? 'items' : 'keys'}
+          </StatusBadge>
+          {path.length > 0 && (
+            <Button
+              aria-label='Delete collection'
+              size='icon-sm'
+              variant='ghost'
+              onClick={() => removeValue(file.id, path)}
+            >
+              <Trash2 />
+            </Button>
+          )}
+          {renderArrayItemActions(file, path)}
+        </div>
+
+        {isJsonObject(value) && (
+          <div className='grid grid-cols-[minmax(0,1fr)_104px_auto] gap-2'>
+            <Input
+              aria-label='New key name'
+              value={draft.key}
+              onChange={(event) =>
+                setAddDrafts((drafts) => ({
+                  ...drafts,
+                  [key]: { ...draft, key: event.target.value },
+                }))
+              }
+              onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+                if (event.key === 'Enter') {
+                  addObjectChild(file.id, path);
+                }
+              }}
+              placeholder='New key'
+            />
+            <KindSelect
+              label='New key type'
+              value={draft.kind}
+              onChange={(nextKind) =>
+                setAddDrafts((drafts) => ({
+                  ...drafts,
+                  [key]: { ...draft, kind: nextKind },
+                }))
+              }
+            />
+            <Button
+              aria-label='Add key'
+              size='icon'
+              variant='outline'
+              onClick={() => addObjectChild(file.id, path)}
+            >
+              <Plus />
+            </Button>
+          </div>
+        )}
+
+        {Array.isArray(value) && (
+          <div className='grid grid-cols-[104px_auto_1fr] items-center gap-2'>
+            <KindSelect
+              label='New array item type'
+              value={draft.kind}
+              onChange={(nextKind) =>
+                setAddDrafts((drafts) => ({
+                  ...drafts,
+                  [key]: { ...draft, kind: nextKind },
+                }))
+              }
+            />
+            <Button
+              className='w-fit'
+              size='sm'
+              variant='outline'
+              onClick={() => addArrayItem(file.id, path)}
+            >
+              <Plus />
+              Add item
+            </Button>
+            <span className='truncate text-xs text-muted-foreground'>
+              Appends a {draft.kind} value
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderValueCell = (file: TranslationFile, path: JsonPath) => {
+    const value = getValueAtPath(file.data, path);
+
+    if (value === MISSING) {
+      const suggestedKind = getSuggestedKind(files, path);
+
+      return (
+        <div className='flex min-h-20 items-center justify-between gap-2 rounded-3xl border border-dashed border-destructive/30 bg-destructive/5 p-3'>
+          <span className='text-sm text-muted-foreground'>Missing here</span>
+          <Button
+            size='sm'
+            variant='outline'
+            onClick={() =>
+              updateValue(file.id, path, createDefaultValue(suggestedKind))
+            }
+          >
+            <Plus />
+            Create {suggestedKind}
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className='rounded-3xl bg-card p-3 shadow-sm ring-1 ring-border/70'>
+        {Array.isArray(value) || isJsonObject(value)
+          ? renderCollectionEditor(file, path, value)
+          : renderPrimitiveEditor(file, path, value)}
+      </div>
+    );
+  };
+
+  const renderTreeRow = (path: JsonPath, depth = 0): React.ReactNode => {
+    const childSegments = collectChildSegments(files, path);
+    const key = pathToKey(path);
+    const isExpanded = expandedPaths.has(key);
+    const status = getPathStatus(files, path);
+    const segment = path[path.length - 1];
+    const canRename = typeof segment === 'string';
+    const renameValue = renameDrafts[key] ?? segment ?? '';
+
+    return (
+      <div key={key}>
+        <div
+          className='grid min-w-max items-stretch border-b border-border/60 bg-background/80'
+          style={{ gridTemplateColumns }}
+        >
+          <div className='sticky left-0 z-10 flex min-h-24 items-center gap-2 border-r border-border/60 bg-background/95 px-3 py-3'>
+            <div style={{ width: depth * 18 }} />
+            <Button
+              aria-label={isExpanded ? 'Collapse path' : 'Expand path'}
+              disabled={childSegments.length === 0}
+              size='icon-sm'
+              variant='ghost'
+              onClick={() => toggleExpanded(path)}
+            >
+              {isExpanded ? <ChevronDown /> : <ChevronRight />}
+            </Button>
+            <div className='min-w-0 flex-1'>
+              <div className='mb-1 flex items-center gap-2'>
+                <span className='truncate text-sm font-semibold'>
+                  {formatSegment(segment)}
+                </span>
+                <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+              </div>
+              <p className='truncate text-xs text-muted-foreground'>
+                {formatPath(path)}
+              </p>
+              {canRename && (
+                <div className='mt-2 flex max-w-72 items-center gap-2'>
+                  <Input
+                    aria-label='Rename key across files'
+                    value={String(renameValue)}
+                    onChange={(event) =>
+                      setRenameDrafts((drafts) => ({
+                        ...drafts,
+                        [key]: event.target.value,
+                      }))
+                    }
+                    onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+                      if (event.key === 'Enter') {
+                        renameKey(path);
+                      }
+                    }}
+                  />
+                  <Button size='sm' variant='outline' onClick={() => renameKey(path)}>
+                    Rename
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {files.map((file) => (
+            <div key={file.id} className='min-w-0 border-r border-border/40 p-3'>
+              {renderValueCell(file, path)}
+            </div>
+          ))}
+        </div>
+
+        {isExpanded &&
+          childSegments.map((childSegment) =>
+            renderTreeRow([...path, childSegment], depth + 1),
+          )}
+      </div>
+    );
   };
 
   return (
-    <div className='h-screen flex flex-col'>
-      <Menubar className='px-4 flex flex-row gap-4'>
-        <h4 className='text-lg font-semibold'>Trans Diff</h4>
-        <p className='text-sm text-gray-500'>
-          A tool to compare and edit translations
-        </p>
-      </Menubar>
+    <div className='flex min-h-svh flex-col bg-muted/40'>
+      <header className='sticky top-0 z-20 border-b border-border/70 bg-background/90 px-4 py-3 backdrop-blur'>
+        <div className='flex flex-wrap items-center justify-between gap-3'>
+          <div>
+            <h1 className='text-xl font-semibold tracking-normal'>Trans Diff</h1>
+            <p className='text-sm text-muted-foreground'>
+              Compare and edit JSON translation files as a typed tree.
+            </p>
+          </div>
+
+          <div className='flex items-center gap-2'>
+            <input
+              id='file-upload'
+              className='sr-only'
+              type='file'
+              accept='.json,application/json'
+              multiple
+              onChange={handleFileUpload}
+            />
+            <label
+              htmlFor='file-upload'
+              className={cn(buttonVariants({ variant: 'outline' }), 'cursor-pointer')}
+            >
+              <Upload />
+              Add JSON
+            </label>
+          </div>
+        </div>
+      </header>
 
       {error && (
-        <Alert variant='destructive' className='m-4'>
+        <Alert variant='destructive' className='mx-4 mt-4'>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
-      <div className='flex-1 p-4 overflow-auto'>
-        <div className='flex flex-row'>
-          {files.map((file, index) => (
-            <div key={`${file.fileName}-${index}`}>
-              <TranslationViewer
-                data={file.data}
-                otherFilesData={files
-                  .filter((_, i) => i !== index)
-                  .map((f) => f.data)}
-                fileName={file.fileName}
-                onSave={() => handleSave(file.data, file.fileName)}
-                onDataChange={(newData) => handleDataChange(index, newData)}
-                onRemove={() => handleRemoveFile(index)}
-              />
-            </div>
-          ))}
-          {renderFileUploadButton()}
-        </div>
-      </div>
+      <main className='flex-1 overflow-hidden p-4'>
+        {files.length === 0 ? (
+          <Card className='mx-auto flex min-h-[520px] max-w-3xl items-center justify-center border-dashed bg-background'>
+            <CardContent className='flex flex-col items-center gap-4 p-10 text-center'>
+              <div className='flex size-14 items-center justify-center rounded-full bg-muted'>
+                <Upload className='size-6 text-muted-foreground' />
+              </div>
+              <div>
+                <h2 className='text-lg font-semibold'>Add JSON files</h2>
+                <p className='mt-1 max-w-md text-sm text-muted-foreground'>
+                  Load two or more translation files to compare keys, edit typed
+                  values, and manage nested objects or arrays from one tree.
+                </p>
+              </div>
+              <label
+                htmlFor='file-upload'
+                className={cn(buttonVariants(), 'cursor-pointer')}
+              >
+                <Upload />
+                Select files
+              </label>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className='h-full overflow-hidden bg-background shadow-sm'>
+            <CardContent className='h-full p-0'>
+              <div className='h-full overflow-auto'>
+                <div
+                  className='sticky top-0 z-20 grid min-w-max border-b border-border/70 bg-background'
+                  style={{ gridTemplateColumns }}
+                >
+                  <div className='sticky left-0 z-30 border-r border-border/60 bg-background p-3'>
+                    <p className='text-xs font-medium uppercase text-muted-foreground'>
+                      Tree
+                    </p>
+                    <p className='mt-1 text-sm font-semibold'>
+                      {files.length} files loaded
+                    </p>
+                  </div>
+                  {files.map((file) => (
+                    <div
+                      key={file.id}
+                      className='flex min-w-0 items-center justify-between gap-3 border-r border-border/40 p-3'
+                    >
+                      <div className='min-w-0'>
+                        <p className='truncate text-sm font-semibold'>
+                          {file.fileName}
+                        </p>
+                        <p className='text-xs text-muted-foreground'>
+                          {countLeaves(file.data)} leaf values
+                        </p>
+                      </div>
+                      <div className='flex items-center gap-1'>
+                        <Button
+                          aria-label={`Save ${file.fileName}`}
+                          size='icon-sm'
+                          variant='ghost'
+                          onClick={() => handleSave(file)}
+                        >
+                          <Save />
+                        </Button>
+                        <Button
+                          aria-label={`Remove ${file.fileName}`}
+                          size='icon-sm'
+                          variant='ghost'
+                          onClick={() => removeFile(file.id)}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {renderTreeRow([])}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </main>
     </div>
   );
 }

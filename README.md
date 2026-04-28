@@ -1,2 +1,2 @@
 ## See it in action
-https://trans-diff.vercel.app/
+Deployed on Cloudflare Pages.
