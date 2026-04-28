@@ -679,6 +679,7 @@ function StatusBadge({
 export default function Home() {
   const [files, setFiles] = useState<TranslationFile[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [selectedSourceFileId, setSelectedSourceFileId] = useState('');
   const [sourceLanguage, setSourceLanguage] = useState('en');
   const [targetLanguage, setTargetLanguage] = useState('fr');
   const [translationJob, setTranslationJob] = useState<TranslationJob | null>(
@@ -695,6 +696,8 @@ export default function Home() {
     () => `minmax(320px, 1.1fr) repeat(${files.length}, minmax(340px, 1fr))`,
     [files.length],
   );
+  const selectedSourceFile =
+    files.find((file) => file.id === selectedSourceFileId) ?? files[0] ?? null;
 
   const updateFileData = (fileId: string, updater: (data: JsonValue) => JsonValue) => {
     setFiles((currentFiles) =>
@@ -718,14 +721,14 @@ export default function Home() {
             throw new Error('The file contains values that are not valid JSON.');
           }
 
-          setFiles((currentFiles) => [
-            ...currentFiles,
-            {
-              data: parsed,
-              fileName: file.name,
-              id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
-            },
-          ]);
+          const nextFile = {
+            data: parsed,
+            fileName: file.name,
+            id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
+          };
+
+          setFiles((currentFiles) => [...currentFiles, nextFile]);
+          setSelectedSourceFileId((currentId) => currentId || nextFile.id);
           setExpandedPaths((currentPaths) => new Set(currentPaths).add('[]'));
           setError(null);
         } catch (uploadError) {
@@ -760,6 +763,18 @@ export default function Home() {
     setFiles((currentFiles) =>
       currentFiles.filter((file) => file.id !== fileId),
     );
+    setSelectedSourceFileId((currentId) =>
+      currentId === fileId ? '' : currentId,
+    );
+  };
+
+  const handleTranslateSelectedFile = () => {
+    if (!selectedSourceFile) {
+      setError('Add a JSON file before creating a translation.');
+      return;
+    }
+
+    void handleTranslateFile(selectedSourceFile);
   };
 
   const handleTranslateFile = async (file: TranslationFile) => {
@@ -1326,6 +1341,28 @@ export default function Home() {
           </div>
 
           <div className='flex flex-wrap items-end gap-2'>
+            <div className='grid min-w-44 gap-1'>
+              <span className='px-1 text-xs font-medium text-muted-foreground'>
+                Source file
+              </span>
+              <select
+                aria-label='Source file for translation'
+                className='h-9 rounded-3xl border border-transparent bg-input/50 px-3 text-sm font-medium outline-none transition-[color,box-shadow,background-color] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-50'
+                disabled={files.length === 0 || translationJob !== null}
+                value={selectedSourceFile?.id ?? ''}
+                onChange={(event) => setSelectedSourceFileId(event.target.value)}
+              >
+                {files.length === 0 ? (
+                  <option value=''>No files loaded</option>
+                ) : (
+                  files.map((file) => (
+                    <option key={file.id} value={file.id}>
+                      {file.fileName}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
             <div className='grid gap-1'>
               <span className='px-1 text-xs font-medium text-muted-foreground'>
                 From
@@ -1346,6 +1383,22 @@ export default function Home() {
                 onChange={setTargetLanguage}
               />
             </div>
+            <Button
+              disabled={
+                !isTranslatorSupported ||
+                !selectedSourceFile ||
+                translationJob !== null
+              }
+              onClick={handleTranslateSelectedFile}
+              variant='outline'
+            >
+              {translationJob ? (
+                <LoaderCircle className='animate-spin' />
+              ) : (
+                <Languages />
+              )}
+              Add translation
+            </Button>
             <input
               id='file-upload'
               className='sr-only'
@@ -1376,10 +1429,17 @@ export default function Home() {
               {translationJob.phase === 'translating' &&
                 `Translating ${translationJob.completed}/${translationJob.total}`}
             </span>
+          ) : files.length === 0 ? (
+            <span>Load a JSON file to create a translated column.</span>
           ) : isTranslatorSupported ? (
-            <span>Auto translate creates a new file beside the selected file.</span>
+            <span>
+              Add translation creates a new column beside the selected source file.
+            </span>
           ) : (
-            <span>Auto translate requires Chrome desktop Translator API support.</span>
+            <span>
+              Add translation requires Chrome desktop Translator API support. It is
+              unavailable in this browser.
+            </span>
           )}
         </div>
       </header>
@@ -1443,23 +1503,6 @@ export default function Home() {
                         </p>
                       </div>
                       <div className='flex items-center gap-1'>
-                        <Button
-                          aria-label={`Translate ${file.fileName}`}
-                          disabled={
-                            !isTranslatorSupported || translationJob !== null
-                          }
-                          size='icon-sm'
-                          variant='ghost'
-                          onClick={() => {
-                            void handleTranslateFile(file);
-                          }}
-                        >
-                          {translationJob?.fileId === file.id ? (
-                            <LoaderCircle className='animate-spin' />
-                          ) : (
-                            <Languages />
-                          )}
-                        </Button>
                         <Button
                           aria-label={`Save ${file.fileName}`}
                           size='icon-sm'
