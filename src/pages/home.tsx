@@ -471,21 +471,6 @@ const duplicateValue = (
   return setValueAtPath(current, parentPath, next);
 };
 
-const stableStringify = (value: JsonValue): string => {
-  if (Array.isArray(value)) {
-    return `[${value.map(stableStringify).join(',')}]`;
-  }
-
-  if (isJsonObject(value)) {
-    return `{${Object.keys(value)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
-      .join(',')}}`;
-  }
-
-  return JSON.stringify(value);
-};
-
 const pathToKey = (path: JsonPath): string => JSON.stringify(path);
 
 const draftKey = (fileId: string, path: JsonPath): string =>
@@ -593,12 +578,12 @@ const getPathStatus = (
     return { label: `${missingCount} missing`, tone: 'warning' };
   }
 
-  const signatures = new Set(
-    values.map((value) => stableStringify(value as JsonValue)),
+  const kinds = new Set(
+    values.map((value) => getValueKind(value as JsonValue)),
   );
 
-  if (signatures.size > 1) {
-    return { label: 'Different', tone: 'warning' };
+  if (kinds.size > 1) {
+    return { label: 'Type mismatch', tone: 'warning' };
   }
 
   return { label: 'Synced', tone: 'success' };
