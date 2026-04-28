@@ -5,6 +5,8 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  Languages,
+  LoaderCircle,
   Plus,
   Save,
   Trash2,
@@ -23,6 +25,7 @@ type JsonValue = JsonPrimitive | JsonArray | JsonObject;
 type PathSegment = string | number;
 type JsonPath = PathSegment[];
 type ValueKind = 'string' | 'number' | 'boolean' | 'null' | 'object' | 'array';
+type TranslatorAvailability = 'available' | 'downloadable' | 'unavailable';
 
 type TranslationFile = {
   id: string;
@@ -35,8 +38,80 @@ type AddDraft = {
   kind: ValueKind;
 };
 
+type LanguageOption = {
+  code: string;
+  label: string;
+};
+
+type TranslationJob = {
+  completed: number;
+  downloadProgress: number | null;
+  fileId: string;
+  phase: 'checking' | 'downloading' | 'translating';
+  total: number;
+};
+
+type BuiltInTranslator = {
+  destroy?: () => void;
+  translate: (input: string) => Promise<string>;
+};
+
+type BuiltInTranslatorFactory = {
+  availability: (options: {
+    sourceLanguage: string;
+    targetLanguage: string;
+  }) => Promise<TranslatorAvailability | string>;
+  create: (options: {
+    monitor?: (monitor: EventTarget) => void;
+    sourceLanguage: string;
+    targetLanguage: string;
+  }) => Promise<BuiltInTranslator>;
+};
+
 const MISSING = Symbol('missing');
 type Missing = typeof MISSING;
+
+const TRANSLATOR_LANGUAGES: LanguageOption[] = [
+  { code: 'ar', label: 'Arabic' },
+  { code: 'bg', label: 'Bulgarian' },
+  { code: 'bn', label: 'Bengali' },
+  { code: 'cs', label: 'Czech' },
+  { code: 'da', label: 'Danish' },
+  { code: 'de', label: 'German' },
+  { code: 'el', label: 'Greek' },
+  { code: 'en', label: 'English' },
+  { code: 'es', label: 'Spanish' },
+  { code: 'fi', label: 'Finnish' },
+  { code: 'fr', label: 'French' },
+  { code: 'hi', label: 'Hindi' },
+  { code: 'hr', label: 'Croatian' },
+  { code: 'hu', label: 'Hungarian' },
+  { code: 'id', label: 'Indonesian' },
+  { code: 'it', label: 'Italian' },
+  { code: 'iw', label: 'Hebrew' },
+  { code: 'ja', label: 'Japanese' },
+  { code: 'kn', label: 'Kannada' },
+  { code: 'ko', label: 'Korean' },
+  { code: 'lt', label: 'Lithuanian' },
+  { code: 'mr', label: 'Marathi' },
+  { code: 'nl', label: 'Dutch' },
+  { code: 'no', label: 'Norwegian' },
+  { code: 'pl', label: 'Polish' },
+  { code: 'pt', label: 'Portuguese' },
+  { code: 'ro', label: 'Romanian' },
+  { code: 'ru', label: 'Russian' },
+  { code: 'sk', label: 'Slovak' },
+  { code: 'sl', label: 'Slovenian' },
+  { code: 'sv', label: 'Swedish' },
+  { code: 'ta', label: 'Tamil' },
+  { code: 'te', label: 'Telugu' },
+  { code: 'th', label: 'Thai' },
+  { code: 'tr', label: 'Turkish' },
+  { code: 'uk', label: 'Ukrainian' },
+  { code: 'vi', label: 'Vietnamese' },
+  { code: 'zh', label: 'Chinese' },
+  { code: 'zh-Hant', label: 'Chinese (Traditional)' },
+];
 
 const VALUE_KINDS: ValueKind[] = [
   'string',
@@ -73,6 +148,85 @@ const isJsonValue = (value: unknown): value is JsonValue => {
 
 const cloneJson = <T extends JsonValue>(value: T): T =>
   JSON.parse(JSON.stringify(value)) as T;
+
+const getTranslatorFactory = (): BuiltInTranslatorFactory | null => {
+  if (typeof self === 'undefined' || !('Translator' in self)) {
+    return null;
+  }
+
+  return (self as unknown as { Translator: BuiltInTranslatorFactory }).Translator;
+};
+
+const countTranslatableStrings = (value: JsonValue): number => {
+  if (typeof value === 'string') {
+    return value.trim() ? 1 : 0;
+  }
+
+  if (Array.isArray(value)) {
+    return value.reduce<number>(
+      (total, item) => total + countTranslatableStrings(item),
+      0,
+    );
+  }
+
+  if (isJsonObject(value)) {
+    return Object.values(value).reduce<number>(
+      (total, item) => total + countTranslatableStrings(item),
+      0,
+    );
+  }
+
+  return 0;
+};
+
+const translateJsonValue = async (
+  value: JsonValue,
+  translateText: (input: string) => Promise<string>,
+  onTranslatedString: () => void,
+): Promise<JsonValue> => {
+  if (typeof value === 'string') {
+    if (!value.trim()) {
+      return value;
+    }
+
+    const translated = await translateText(value);
+    onTranslatedString();
+    return translated;
+  }
+
+  if (Array.isArray(value)) {
+    const translatedItems: JsonArray = [];
+
+    for (const item of value) {
+      translatedItems.push(
+        await translateJsonValue(item, translateText, onTranslatedString),
+      );
+    }
+
+    return translatedItems;
+  }
+
+  if (isJsonObject(value)) {
+    const translatedObject: JsonObject = {};
+
+    for (const [key, item] of Object.entries(value)) {
+      translatedObject[key] = await translateJsonValue(
+        item,
+        translateText,
+        onTranslatedString,
+      );
+    }
+
+    return translatedObject;
+  }
+
+  return value;
+};
+
+const getTranslatedFileName = (fileName: string, targetLanguage: string): string =>
+  fileName.match(/\.json$/i)
+    ? fileName.replace(/\.json$/i, `.${targetLanguage}.json`)
+    : `${fileName}.${targetLanguage}.json`;
 
 const createDefaultValue = (kind: ValueKind): JsonValue => {
   switch (kind) {
@@ -475,6 +629,31 @@ function KindSelect({
   );
 }
 
+function LanguageSelect({
+  value,
+  onChange,
+  label,
+}: {
+  value: string;
+  onChange: (language: string) => void;
+  label: string;
+}) {
+  return (
+    <select
+      aria-label={label}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className='h-9 rounded-3xl border border-transparent bg-input/50 px-3 text-sm font-medium outline-none transition-[color,box-shadow,background-color] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30'
+    >
+      {TRANSLATOR_LANGUAGES.map((language) => (
+        <option key={language.code} value={language.code}>
+          {language.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function StatusBadge({
   tone,
   children,
@@ -500,11 +679,17 @@ function StatusBadge({
 export default function Home() {
   const [files, setFiles] = useState<TranslationFile[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [sourceLanguage, setSourceLanguage] = useState('en');
+  const [targetLanguage, setTargetLanguage] = useState('fr');
+  const [translationJob, setTranslationJob] = useState<TranslationJob | null>(
+    null,
+  );
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
     () => new Set(['[]']),
   );
   const [addDrafts, setAddDrafts] = useState<Record<string, AddDraft>>({});
   const [renameDrafts, setRenameDrafts] = useState<Record<string, string>>({});
+  const isTranslatorSupported = getTranslatorFactory() !== null;
 
   const gridTemplateColumns = useMemo(
     () => `minmax(320px, 1.1fr) repeat(${files.length}, minmax(340px, 1fr))`,
@@ -575,6 +760,137 @@ export default function Home() {
     setFiles((currentFiles) =>
       currentFiles.filter((file) => file.id !== fileId),
     );
+  };
+
+  const handleTranslateFile = async (file: TranslationFile) => {
+    const translatorFactory = getTranslatorFactory();
+
+    if (!translatorFactory) {
+      setError('Auto translate is not available in this browser.');
+      return;
+    }
+
+    if (sourceLanguage === targetLanguage) {
+      setError('Choose different source and target languages.');
+      return;
+    }
+
+    const total = countTranslatableStrings(file.data);
+
+    if (total === 0) {
+      setError(`${file.fileName} has no non-empty string values to translate.`);
+      return;
+    }
+
+    let translator: BuiltInTranslator | null = null;
+    setError(null);
+    setTranslationJob({
+      completed: 0,
+      downloadProgress: null,
+      fileId: file.id,
+      phase: 'checking',
+      total,
+    });
+
+    try {
+      const availability = await translatorFactory.availability({
+        sourceLanguage,
+        targetLanguage,
+      });
+
+      if (availability === 'unavailable') {
+        throw new Error(
+          `Translation from ${sourceLanguage} to ${targetLanguage} is not available in this browser.`,
+        );
+      }
+
+      setTranslationJob((job) =>
+        job
+          ? {
+              ...job,
+              phase:
+                availability === 'downloadable' ? 'downloading' : 'translating',
+            }
+          : job,
+      );
+
+      translator = await translatorFactory.create({
+        sourceLanguage,
+        targetLanguage,
+        monitor(monitor) {
+          monitor.addEventListener('downloadprogress', (event) => {
+            const progressEvent = event as ProgressEvent;
+            const loaded = progressEvent.loaded;
+            const totalBytes = progressEvent.total;
+            const normalizedProgress =
+              totalBytes > 0 ? loaded / totalBytes : loaded;
+            const downloadProgress =
+              normalizedProgress <= 1
+                ? Math.round(normalizedProgress * 100)
+                : Math.round(normalizedProgress);
+
+            setTranslationJob((job) =>
+              job
+                ? {
+                    ...job,
+                    downloadProgress,
+                    phase: 'downloading',
+                  }
+                : job,
+            );
+          });
+        },
+      });
+
+      setTranslationJob((job) =>
+        job ? { ...job, downloadProgress: null, phase: 'translating' } : job,
+      );
+
+      const translatedData = await translateJsonValue(
+        file.data,
+        (text) => translator?.translate(text) ?? Promise.resolve(text),
+        () =>
+          setTranslationJob((job) =>
+            job
+              ? {
+                  ...job,
+                  completed: job.completed + 1,
+                  phase: 'translating',
+                }
+              : job,
+          ),
+      );
+
+      setFiles((currentFiles) => {
+        const sourceIndex = currentFiles.findIndex(
+          (currentFile) => currentFile.id === file.id,
+        );
+        const translatedFile: TranslationFile = {
+          data: translatedData,
+          fileName: getTranslatedFileName(file.fileName, targetLanguage),
+          id: `translated-${targetLanguage}-${crypto.randomUUID()}`,
+        };
+
+        if (sourceIndex === -1) {
+          return [...currentFiles, translatedFile];
+        }
+
+        return [
+          ...currentFiles.slice(0, sourceIndex + 1),
+          translatedFile,
+          ...currentFiles.slice(sourceIndex + 1),
+        ];
+      });
+    } catch (translationError) {
+      setError(
+        translationError instanceof Error
+          ? translationError.message
+          : 'Unable to translate this file.',
+      );
+    } finally {
+      translator?.destroy?.();
+      setTranslationJob(null);
+    }
   };
 
   const toggleExpanded = (path: JsonPath) => {
@@ -1009,7 +1325,27 @@ export default function Home() {
             </p>
           </div>
 
-          <div className='flex items-center gap-2'>
+          <div className='flex flex-wrap items-end gap-2'>
+            <div className='grid gap-1'>
+              <span className='px-1 text-xs font-medium text-muted-foreground'>
+                From
+              </span>
+              <LanguageSelect
+                label='Source language'
+                value={sourceLanguage}
+                onChange={setSourceLanguage}
+              />
+            </div>
+            <div className='grid gap-1'>
+              <span className='px-1 text-xs font-medium text-muted-foreground'>
+                To
+              </span>
+              <LanguageSelect
+                label='Target language'
+                value={targetLanguage}
+                onChange={setTargetLanguage}
+              />
+            </div>
             <input
               id='file-upload'
               className='sr-only'
@@ -1026,6 +1362,25 @@ export default function Home() {
               Add JSON
             </label>
           </div>
+        </div>
+        <div className='mt-2 min-h-5 text-xs text-muted-foreground'>
+          {translationJob ? (
+            <span>
+              {translationJob.phase === 'checking' && 'Checking translation'}
+              {translationJob.phase === 'downloading' &&
+                `Downloading language pack${
+                  translationJob.downloadProgress === null
+                    ? ''
+                    : ` ${translationJob.downloadProgress}%`
+                }`}
+              {translationJob.phase === 'translating' &&
+                `Translating ${translationJob.completed}/${translationJob.total}`}
+            </span>
+          ) : isTranslatorSupported ? (
+            <span>Auto translate creates a new file beside the selected file.</span>
+          ) : (
+            <span>Auto translate requires Chrome desktop Translator API support.</span>
+          )}
         </div>
       </header>
 
@@ -1088,6 +1443,23 @@ export default function Home() {
                         </p>
                       </div>
                       <div className='flex items-center gap-1'>
+                        <Button
+                          aria-label={`Translate ${file.fileName}`}
+                          disabled={
+                            !isTranslatorSupported || translationJob !== null
+                          }
+                          size='icon-sm'
+                          variant='ghost'
+                          onClick={() => {
+                            void handleTranslateFile(file);
+                          }}
+                        >
+                          {translationJob?.fileId === file.id ? (
+                            <LoaderCircle className='animate-spin' />
+                          ) : (
+                            <Languages />
+                          )}
+                        </Button>
                         <Button
                           aria-label={`Save ${file.fileName}`}
                           size='icon-sm'
