@@ -3,8 +3,8 @@
 @import "tw-animate-css";
 
 @theme inline {
-  --font-sans: var(--font-sans);
-  --font-heading: var(--font-heading);
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -115,20 +115,11 @@
     --sidebar-ring: oklch(0.556 0 0);
   }
 
-  .theme {
-    --font-heading: var(--font-sans);
-    --font-sans: "Inter Variable", sans-serif;
-  }
-
   * {
     @apply border-border outline-ring/50;
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
-  }
-
-  html {
-    @apply font-sans;
+    @apply bg-background font-sans text-foreground antialiased;
   }
 }
