@@ -48,6 +48,7 @@ type SearchFilter = {
 };
 
 type SearchablePath = {
+  dottedPath: string;
   formattedPath: string;
   path: JsonPath;
   segment: string;
@@ -513,6 +514,9 @@ const formatPath = (path: JsonPath): string => {
   }, '$');
 };
 
+const formatDottedPath = (path: JsonPath): string =>
+  path.map((segment) => String(segment)).join('.');
+
 const formatSegment = (segment: PathSegment | undefined): string => {
   if (segment === undefined) {
     return 'Root';
@@ -617,12 +621,13 @@ const createSearchFilter = (
   const searchablePaths: SearchablePath[] = paths
     .filter((path) => path.length > 0)
     .map((path) => ({
+      dottedPath: formatDottedPath(path),
       formattedPath: formatPath(path),
       path,
       segment: formatSegment(path[path.length - 1]),
     }));
   const matchedPaths = matchSorter(searchablePaths, trimmedQuery, {
-    keys: ['segment', 'formattedPath'],
+    keys: ['segment', 'dottedPath', 'formattedPath'],
   });
   const visiblePathKeys = new Set<string>();
 
@@ -1690,9 +1695,9 @@ export default function Home() {
                         className='pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground'
                       />
                       <Input
-                        aria-label='Search keys'
+                        aria-label='Search keys or paths'
                         className='h-9 rounded-3xl bg-input/50 pl-9 pr-9'
-                        placeholder='Search keys'
+                        placeholder='Search keys or paths'
                         value={searchQuery}
                         onChange={(event) => setSearchQuery(event.target.value)}
                       />
@@ -1746,7 +1751,7 @@ export default function Home() {
 
                 {searchFilter?.matchCount === 0 ? (
                   <div className='p-6 text-sm text-muted-foreground'>
-                    No keys match "{trimmedSearchQuery}".
+                    No keys or paths match "{trimmedSearchQuery}".
                   </div>
                 ) : (
                   renderTreeRow([])
