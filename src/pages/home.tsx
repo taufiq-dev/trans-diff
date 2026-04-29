@@ -1,4 +1,10 @@
-import { useMemo, useState, type ChangeEvent, type KeyboardEvent } from 'react';
+import {
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type KeyboardEvent,
+} from 'react';
 import {
   ArrowDown,
   ArrowUp,
@@ -664,6 +670,7 @@ function StatusBadge({
 export default function Home() {
   const [files, setFiles] = useState<TranslationFile[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isDraggingJson, setIsDraggingJson] = useState(false);
   const [selectedSourceFileId, setSelectedSourceFileId] = useState('');
   const [sourceLanguage, setSourceLanguage] = useState('en');
   const [targetLanguage, setTargetLanguage] = useState('fr');
@@ -692,11 +699,18 @@ export default function Home() {
     );
   };
 
-  const handleFileUpload = (event: ChangeEvent<HTMLInputElement>): void => {
-    const selectedFiles = Array.from(event.target.files ?? []);
-    event.target.value = '';
+  const handleFilesSelected = (selectedFiles: File[]): void => {
+    const jsonFiles = selectedFiles.filter(
+      (file) =>
+        file.type === 'application/json' ||
+        file.name.toLowerCase().endsWith('.json'),
+    );
 
-    for (const file of selectedFiles) {
+    if (jsonFiles.length !== selectedFiles.length) {
+      setError('Only JSON files can be added.');
+    }
+
+    for (const file of jsonFiles) {
       const reader = new FileReader();
       reader.onload = (readerEvent: ProgressEvent<FileReader>) => {
         try {
@@ -727,6 +741,29 @@ export default function Home() {
         }
       };
       reader.readAsText(file);
+    }
+  };
+
+  const handleFileUpload = (event: ChangeEvent<HTMLInputElement>): void => {
+    handleFilesSelected(Array.from(event.target.files ?? []));
+    event.target.value = '';
+  };
+
+  const handleDrop = (event: DragEvent<HTMLDivElement>): void => {
+    event.preventDefault();
+    setIsDraggingJson(false);
+    handleFilesSelected(Array.from(event.dataTransfer.files));
+  };
+
+  const handleDragOver = (event: DragEvent<HTMLDivElement>): void => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    setIsDraggingJson(true);
+  };
+
+  const handleDragLeave = (event: DragEvent<HTMLDivElement>): void => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      setIsDraggingJson(false);
     }
   };
 
@@ -1437,7 +1474,16 @@ export default function Home() {
 
       <main className='flex-1 overflow-hidden p-4'>
         {files.length === 0 ? (
-          <Card className='mx-auto flex min-h-[520px] max-w-3xl items-center justify-center border-dashed bg-background'>
+          <Card
+            className={cn(
+              'mx-auto flex min-h-[520px] max-w-3xl items-center justify-center border-dashed bg-background transition-[border-color,background-color,box-shadow]',
+              isDraggingJson &&
+                'border-primary bg-muted/60 shadow-sm ring-3 ring-ring/20',
+            )}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+          >
             <CardContent className='flex flex-col items-center gap-4 p-10 text-center'>
               <div className='flex size-14 items-center justify-center rounded-full bg-muted'>
                 <Upload className='size-6 text-muted-foreground' />
@@ -1445,8 +1491,8 @@ export default function Home() {
               <div>
                 <h2 className='text-lg font-semibold'>Add JSON files</h2>
                 <p className='mt-1 max-w-md text-sm text-muted-foreground'>
-                  Load two or more translation files to compare keys, edit typed
-                  values, and manage nested objects or arrays from one tree.
+                  Drag JSON files here, or select files to compare keys, edit
+                  typed values, and manage nested objects or arrays from one tree.
                 </p>
               </div>
               <label
