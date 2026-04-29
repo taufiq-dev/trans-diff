@@ -128,6 +128,9 @@ const VALUE_KINDS: ValueKind[] = [
   'array',
 ];
 
+const selectControlClassName =
+  'appearance-none rounded-3xl border border-transparent bg-input/50 pl-3 pr-9 outline-none transition-[color,box-shadow,background-color] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-50';
+
 const isJsonObject = (value: unknown): value is JsonObject =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -555,6 +558,30 @@ const collectChildSegments = (
   });
 };
 
+const collectVisiblePaths = (files: TranslationFile[]): JsonPath[] => {
+  if (files.length === 0) {
+    return [];
+  }
+
+  const paths: JsonPath[] = [[]];
+
+  for (let index = 0; index < paths.length; index += 1) {
+    const path = paths[index];
+    const childSegments = collectChildSegments(files, path);
+
+    childSegments.forEach((segment) => {
+      paths.push([...path, segment]);
+    });
+  }
+
+  return paths;
+};
+
+const countNotSyncedPaths = (files: TranslationFile[]): number =>
+  collectVisiblePaths(files).filter(
+    (path) => getPathStatus(files, path).label !== 'Synced',
+  ).length;
+
 const getSuggestedKind = (
   files: TranslationFile[],
   path: JsonPath,
@@ -595,6 +622,18 @@ const getPathStatus = (
   return { label: 'Synced', tone: 'success' };
 };
 
+function SelectIndicator({ className }: { className?: string }) {
+  return (
+    <ChevronDown
+      aria-hidden='true'
+      className={cn(
+        'pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground',
+        className,
+      )}
+    />
+  );
+}
+
 function KindSelect({
   value,
   onChange,
@@ -605,18 +644,24 @@ function KindSelect({
   label: string;
 }) {
   return (
-    <select
-      aria-label={label}
-      value={value}
-      onChange={(event) => onChange(event.target.value as ValueKind)}
-      className='h-8 rounded-3xl border border-transparent bg-input/50 px-3 text-xs font-medium text-muted-foreground outline-none transition-[color,box-shadow,background-color] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30'
-    >
-      {VALUE_KINDS.map((kind) => (
-        <option key={kind} value={kind}>
-          {kind}
-        </option>
-      ))}
-    </select>
+    <div className='relative inline-block'>
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value as ValueKind)}
+        className={cn(
+          selectControlClassName,
+          'h-8 text-xs font-medium text-muted-foreground',
+        )}
+      >
+        {VALUE_KINDS.map((kind) => (
+          <option key={kind} value={kind}>
+            {kind}
+          </option>
+        ))}
+      </select>
+      <SelectIndicator className='right-2.5 size-3.5' />
+    </div>
   );
 }
 
@@ -630,18 +675,21 @@ function LanguageSelect({
   label: string;
 }) {
   return (
-    <select
-      aria-label={label}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className='h-9 rounded-3xl border border-transparent bg-input/50 px-3 text-sm font-medium outline-none transition-[color,box-shadow,background-color] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30'
-    >
-      {TRANSLATOR_LANGUAGES.map((language) => (
-        <option key={language.code} value={language.code}>
-          {language.label}
-        </option>
-      ))}
-    </select>
+    <div className='relative inline-block'>
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className={cn(selectControlClassName, 'h-9 text-sm font-medium')}
+      >
+        {TRANSLATOR_LANGUAGES.map((language) => (
+          <option key={language.code} value={language.code}>
+            {language.label}
+          </option>
+        ))}
+      </select>
+      <SelectIndicator />
+    </div>
   );
 }
 
@@ -688,6 +736,7 @@ export default function Home() {
     () => `minmax(320px, 1.1fr) repeat(${files.length}, minmax(340px, 1fr))`,
     [files.length],
   );
+  const notSyncedPathCount = useMemo(() => countNotSyncedPaths(files), [files]);
   const selectedSourceFile =
     files.find((file) => file.id === selectedSourceFileId) ?? files[0] ?? null;
 
@@ -1061,17 +1110,20 @@ export default function Home() {
         )}
 
         {kind === 'boolean' && (
-          <select
-            aria-label={`Boolean value for ${file.fileName} ${formatPath(path)}`}
-            value={String(value)}
-            onChange={(event) =>
-              updateValue(file.id, path, event.target.value === 'true')
-            }
-            className='h-9 rounded-3xl border border-transparent bg-input/50 px-3 text-sm outline-none transition-[color,box-shadow,background-color] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30'
-          >
-            <option value='true'>true</option>
-            <option value='false'>false</option>
-          </select>
+          <div className='relative w-fit'>
+            <select
+              aria-label={`Boolean value for ${file.fileName} ${formatPath(path)}`}
+              value={String(value)}
+              onChange={(event) =>
+                updateValue(file.id, path, event.target.value === 'true')
+              }
+              className={cn(selectControlClassName, 'h-9 text-sm')}
+            >
+              <option value='true'>true</option>
+              <option value='false'>false</option>
+            </select>
+            <SelectIndicator />
+          </div>
         )}
 
         {kind === 'null' && (
@@ -1356,7 +1408,17 @@ export default function Home() {
       <header className='sticky top-0 z-20 border-b border-border/70 bg-background/90 px-4 py-3 backdrop-blur'>
         <div className='flex flex-wrap items-center justify-between gap-3'>
           <div>
-            <h1 className='text-xl font-semibold tracking-normal'>Trans Diff</h1>
+            <div className='flex flex-wrap items-center gap-2'>
+              <h1 className='text-xl font-semibold tracking-normal'>Trans Diff</h1>
+              {files.length > 0 && (
+                <StatusBadge
+                  tone={notSyncedPathCount > 0 ? 'warning' : 'success'}
+                >
+                  <span className='tabular-nums'>{notSyncedPathCount}</span>
+                  <span className='ml-1'>not synced</span>
+                </StatusBadge>
+              )}
+            </div>
             <p className='text-sm text-muted-foreground'>
               Compare and edit JSON translation files as a typed tree.
             </p>
@@ -1367,23 +1429,26 @@ export default function Home() {
               <span className='px-1 text-xs font-medium text-muted-foreground'>
                 Source file
               </span>
-              <select
-                aria-label='Source file for translation'
-                className='h-9 rounded-3xl border border-transparent bg-input/50 px-3 text-sm font-medium outline-none transition-[color,box-shadow,background-color] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-50'
-                disabled={files.length === 0 || translationJob !== null}
-                value={selectedSourceFile?.id ?? ''}
-                onChange={(event) => setSelectedSourceFileId(event.target.value)}
-              >
-                {files.length === 0 ? (
-                  <option value=''>No files loaded</option>
-                ) : (
-                  files.map((file) => (
-                    <option key={file.id} value={file.id}>
-                      {file.fileName}
-                    </option>
-                  ))
-                )}
-              </select>
+              <div className='relative'>
+                <select
+                  aria-label='Source file for translation'
+                  className={cn(selectControlClassName, 'h-9 w-full text-sm font-medium')}
+                  disabled={files.length === 0 || translationJob !== null}
+                  value={selectedSourceFile?.id ?? ''}
+                  onChange={(event) => setSelectedSourceFileId(event.target.value)}
+                >
+                  {files.length === 0 ? (
+                    <option value=''>No files loaded</option>
+                  ) : (
+                    files.map((file) => (
+                      <option key={file.id} value={file.id}>
+                        {file.fileName}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <SelectIndicator />
+              </div>
             </div>
             <div className='grid gap-1'>
               <span className='px-1 text-xs font-medium text-muted-foreground'>
