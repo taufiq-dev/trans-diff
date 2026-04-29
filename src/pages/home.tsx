@@ -5,6 +5,7 @@ import {
   type DragEvent,
   type KeyboardEvent,
 } from 'react';
+import { matchSorter } from 'match-sorter';
 import {
   ArrowDown,
   ArrowUp,
@@ -15,8 +16,10 @@ import {
   LoaderCircle,
   Plus,
   Save,
+  Search,
   Trash2,
   Upload,
+  X,
 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -37,6 +40,17 @@ type TranslationFile = {
   id: string;
   data: JsonValue;
   fileName: string;
+};
+
+type SearchFilter = {
+  matchCount: number;
+  visiblePathKeys: Set<string>;
+};
+
+type SearchablePath = {
+  formattedPath: string;
+  path: JsonPath;
+  segment: string;
 };
 
 type AddDraft = {
@@ -586,6 +600,54 @@ const countNotSyncedPaths = (files: TranslationFile[]): number =>
     );
   }).length;
 
+const isDescendantPath = (path: JsonPath, ancestorPath: JsonPath): boolean =>
+  path.length > ancestorPath.length &&
+  ancestorPath.every((segment, index) => path[index] === segment);
+
+const createSearchFilter = (
+  paths: JsonPath[],
+  query: string,
+): SearchFilter | null => {
+  const trimmedQuery = query.trim();
+
+  if (!trimmedQuery) {
+    return null;
+  }
+
+  const searchablePaths: SearchablePath[] = paths
+    .filter((path) => path.length > 0)
+    .map((path) => ({
+      formattedPath: formatPath(path),
+      path,
+      segment: formatSegment(path[path.length - 1]),
+    }));
+  const matchedPaths = matchSorter(searchablePaths, trimmedQuery, {
+    keys: ['segment', 'formattedPath'],
+  });
+  const visiblePathKeys = new Set<string>();
+
+  matchedPaths.forEach((matchedPath) => {
+    for (let index = 0; index <= matchedPath.path.length; index += 1) {
+      visiblePathKeys.add(pathToKey(matchedPath.path.slice(0, index)));
+    }
+  });
+
+  paths.forEach((path) => {
+    if (
+      matchedPaths.some((matchedPath) =>
+        isDescendantPath(path, matchedPath.path),
+      )
+    ) {
+      visiblePathKeys.add(pathToKey(path));
+    }
+  });
+
+  return {
+    matchCount: matchedPaths.length,
+    visiblePathKeys,
+  };
+};
+
 const getSuggestedKind = (
   files: TranslationFile[],
   path: JsonPath,
@@ -726,6 +788,7 @@ export default function Home() {
   const [selectedSourceFileId, setSelectedSourceFileId] = useState('');
   const [sourceLanguage, setSourceLanguage] = useState('en');
   const [targetLanguage, setTargetLanguage] = useState('fr');
+  const [searchQuery, setSearchQuery] = useState('');
   const [translationJob, setTranslationJob] = useState<TranslationJob | null>(
     null,
   );
@@ -740,6 +803,12 @@ export default function Home() {
     () => `minmax(320px, 1.1fr) repeat(${files.length}, minmax(340px, 1fr))`,
     [files.length],
   );
+  const treePaths = useMemo(() => collectVisiblePaths(files), [files]);
+  const searchFilter = useMemo(
+    () => createSearchFilter(treePaths, searchQuery),
+    [searchQuery, treePaths],
+  );
+  const trimmedSearchQuery = searchQuery.trim();
   const notSyncedPathCount = useMemo(() => countNotSyncedPaths(files), [files]);
   const selectedSourceFile =
     files.find((file) => file.id === selectedSourceFileId) ?? files[0] ?? null;
@@ -1332,9 +1401,26 @@ export default function Home() {
   };
 
   const renderTreeRow = (path: JsonPath, depth = 0): React.ReactNode => {
-    const childSegments = collectChildSegments(files, path);
     const key = pathToKey(path);
-    const isExpanded = expandedPaths.has(key);
+    const activeSearchFilter = searchFilter;
+    const isSearchActive = activeSearchFilter !== null;
+
+    if (isSearchActive && !activeSearchFilter.visiblePathKeys.has(key)) {
+      return null;
+    }
+
+    const childSegments = collectChildSegments(files, path).filter((childSegment) => {
+      if (!isSearchActive) {
+        return true;
+      }
+
+      return activeSearchFilter.visiblePathKeys.has(
+        pathToKey([...path, childSegment]),
+      );
+    });
+    const isExpanded = isSearchActive
+      ? childSegments.length > 0
+      : expandedPaths.has(key);
     const status = getPathStatus(files, path);
     const segment = path[path.length - 1];
     const canRename = typeof segment === 'string';
@@ -1585,9 +1671,43 @@ export default function Home() {
                     <p className='text-xs font-medium uppercase text-muted-foreground'>
                       Tree
                     </p>
-                    <p className='mt-1 text-sm font-semibold'>
-                      {files.length} files loaded
-                    </p>
+                    <div className='mt-1 flex items-center justify-between gap-2'>
+                      <p className='text-sm font-semibold'>
+                        {files.length} files loaded
+                      </p>
+                      {searchFilter && (
+                        <span className='shrink-0 text-xs text-muted-foreground'>
+                          <span className='tabular-nums'>
+                            {searchFilter.matchCount}
+                          </span>{' '}
+                          {searchFilter.matchCount === 1 ? 'match' : 'matches'}
+                        </span>
+                      )}
+                    </div>
+                    <div className='relative mt-3'>
+                      <Search
+                        aria-hidden='true'
+                        className='pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground'
+                      />
+                      <Input
+                        aria-label='Search keys'
+                        className='h-9 rounded-3xl bg-input/50 pl-9 pr-9'
+                        placeholder='Search keys'
+                        value={searchQuery}
+                        onChange={(event) => setSearchQuery(event.target.value)}
+                      />
+                      {searchQuery && (
+                        <Button
+                          aria-label='Clear key search'
+                          className='absolute right-1 top-1/2 size-7 -translate-y-1/2'
+                          size='icon-sm'
+                          variant='ghost'
+                          onClick={() => setSearchQuery('')}
+                        >
+                          <X />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   {files.map((file) => (
                     <div
@@ -1624,7 +1744,13 @@ export default function Home() {
                   ))}
                 </div>
 
-                {renderTreeRow([])}
+                {searchFilter?.matchCount === 0 ? (
+                  <div className='p-6 text-sm text-muted-foreground'>
+                    No keys match "{trimmedSearchQuery}".
+                  </div>
+                ) : (
+                  renderTreeRow([])
+                )}
               </div>
             </CardContent>
           </Card>
