@@ -2,7 +2,7 @@
   "name": "trans-diff",
   "private": true,
   "version": "0.0.0",
-  "packageManager": "pnpm@10.33.2",
+  "packageManager": "pnpm@11.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -38,10 +38,5 @@
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.59.1",
     "vite": "^8.0.10"
-  },
-  "pnpm": {
-    "overrides": {
-      "yaml": "^2.8.3"
-    }
   }
 }
