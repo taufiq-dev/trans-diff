@@ -333,7 +333,7 @@ const getValueAtPath = (root: JsonValue, path: JsonPath): JsonValue | Missing =>
     current = current[segment];
   }
 
-  return current ?? MISSING;
+  return current === undefined ? MISSING : current;
 };
 
 const defaultContainerFor = (segment: PathSegment | undefined): JsonValue =>
@@ -578,9 +578,13 @@ const collectVisiblePaths = (files: TranslationFile[]): JsonPath[] => {
 };
 
 const countNotSyncedPaths = (files: TranslationFile[]): number =>
-  collectVisiblePaths(files).filter(
-    (path) => getPathStatus(files, path).label !== 'Synced',
-  ).length;
+  collectVisiblePaths(files).filter((path) => {
+    const status = getPathStatus(files, path);
+    return (
+      status.label !== 'Synced' &&
+      !status.label.toLowerCase().includes('missing')
+    );
+  }).length;
 
 const getSuggestedKind = (
   files: TranslationFile[],
