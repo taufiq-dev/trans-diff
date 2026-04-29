@@ -1476,7 +1476,7 @@ export default function Home() {
         {files.length === 0 ? (
           <Card
             className={cn(
-              'mx-auto flex min-h-[520px] max-w-3xl items-center justify-center border-dashed bg-background transition-[border-color,background-color,box-shadow]',
+              'mx-auto flex min-h-[520px] max-w-3xl items-center justify-center border-2 border-dashed border-muted-foreground/35 bg-background transition-[border-color,background-color,box-shadow]',
               isDraggingJson &&
                 'border-primary bg-muted/60 shadow-sm ring-3 ring-ring/20',
             )}
