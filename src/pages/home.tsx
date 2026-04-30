@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useMemo,
   useState,
   type ChangeEvent,
@@ -36,8 +38,13 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+
+const JsonCodeEditor = lazy(() =>
+  import('@/components/json-code-editor').then((module) => ({
+    default: module.JsonCodeEditor,
+  })),
+);
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonArray = JsonValue[];
@@ -1694,47 +1701,58 @@ export default function Home() {
       )}
 
       <Dialog open={isPasteDialogOpen} onOpenChange={setIsPasteDialogOpen}>
-        <DialogContent className='sm:max-w-2xl'>
-          <form className='grid gap-4' onSubmit={handlePasteJsonSubmit}>
-            <DialogHeader>
+        <DialogContent className='flex h-[min(720px,calc(100svh-2rem))] max-h-[calc(100svh-2rem)] overflow-hidden p-0 sm:max-w-3xl'>
+          <form
+            className='flex min-h-0 flex-1 flex-col'
+            onSubmit={handlePasteJsonSubmit}
+          >
+            <DialogHeader className='shrink-0 p-4'>
               <DialogTitle>Paste JSON</DialogTitle>
               <DialogDescription>
                 Add an existing JSON file by pasting its raw content.
               </DialogDescription>
             </DialogHeader>
-            <div className='grid gap-2'>
-              <Label htmlFor='paste-file-name'>File name</Label>
-              <Input
-                id='paste-file-name'
-                value={pasteFileName}
-                onChange={(event) => setPasteFileName(event.target.value)}
-                placeholder='id.json'
-              />
-            </div>
-            <div className='grid gap-2'>
-              <Label htmlFor='paste-json-content'>JSON content</Label>
-              <Textarea
-                id='paste-json-content'
-                aria-invalid={Boolean(pasteJsonError)}
-                className='min-h-72 resize-y font-mono text-sm'
-                value={pasteJsonContent}
-                onChange={(event) => {
-                  setPasteJsonContent(event.target.value);
-                  setPasteJsonError(null);
-                }}
-                placeholder='{"appName":"Trans Diff"}'
-              />
-              <div className='min-h-5 text-xs'>
-                {pasteJsonError ? (
-                  <span className='text-destructive'>{pasteJsonError}</span>
-                ) : (
-                  <span className='text-muted-foreground'>
-                    The pasted content must parse as JSON.
-                  </span>
-                )}
+            <div className='flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-4 pb-4'>
+              <div className='grid shrink-0 gap-2'>
+                <Label htmlFor='paste-file-name'>File name</Label>
+                <Input
+                  id='paste-file-name'
+                  value={pasteFileName}
+                  onChange={(event) => setPasteFileName(event.target.value)}
+                  placeholder='id.json'
+                />
+              </div>
+              <div className='grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] gap-2'>
+                <Label htmlFor='paste-json-content'>JSON content</Label>
+                <Suspense
+                  fallback={
+                    <div className='h-full min-h-0 rounded-lg border border-input bg-background' />
+                  }
+                >
+                  <JsonCodeEditor
+                    id='paste-json-content'
+                    ariaLabel='JSON content'
+                    className='h-full'
+                    invalid={Boolean(pasteJsonError)}
+                    value={pasteJsonContent}
+                    onChange={(nextValue) => {
+                      setPasteJsonContent(nextValue);
+                      setPasteJsonError(null);
+                    }}
+                  />
+                </Suspense>
+                <div className='min-h-5 text-xs'>
+                  {pasteJsonError ? (
+                    <span className='text-destructive'>{pasteJsonError}</span>
+                  ) : (
+                    <span className='text-muted-foreground'>
+                      The pasted content must parse as JSON.
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
-            <DialogFooter>
+            <DialogFooter className='mx-0 mb-0 shrink-0 rounded-b-xl px-4 pb-4 pt-3'>
               <Button
                 type='button'
                 variant='outline'

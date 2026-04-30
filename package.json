@@ -12,9 +12,11 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
+    "@codemirror/lang-json": "^6.0.2",
     "@fontsource-variable/geist": "^5.2.8",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "codemirror": "^6.0.2",
     "lucide-react": "^1.11.0",
     "match-sorter": "^8.3.0",
     "react": "^19.2.5",
