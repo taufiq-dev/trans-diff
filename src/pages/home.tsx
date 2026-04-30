@@ -722,7 +722,7 @@ function KindSelect({
         onChange={(event) => onChange(event.target.value as ValueKind)}
         className={cn(
           selectControlClassName,
-          'h-8 text-xs font-medium text-muted-foreground',
+          'h-8 min-w-28 text-xs font-medium text-muted-foreground',
         )}
       >
         {VALUE_KINDS.map((kind) => (
@@ -731,7 +731,7 @@ function KindSelect({
           </option>
         ))}
       </select>
-      <SelectIndicator className='right-2.5 size-3.5' />
+      <SelectIndicator className='size-3.5' />
     </div>
   );
 }
@@ -1305,7 +1305,7 @@ export default function Home() {
         </div>
 
         {isJsonObject(value) && (
-          <div className='grid grid-cols-[minmax(0,1fr)_104px_auto] gap-2'>
+          <div className='grid grid-cols-[minmax(0,1fr)_112px_auto] gap-2'>
             <Input
               aria-label='New key name'
               value={draft.key}
@@ -1344,7 +1344,7 @@ export default function Home() {
         )}
 
         {Array.isArray(value) && (
-          <div className='grid grid-cols-[104px_auto_1fr] items-center gap-2'>
+          <div className='grid grid-cols-[112px_auto_1fr] items-center gap-2'>
             <KindSelect
               label='New array item type'
               value={draft.kind}
