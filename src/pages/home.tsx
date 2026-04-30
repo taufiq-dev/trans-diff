@@ -3,6 +3,7 @@ import {
   useState,
   type ChangeEvent,
   type DragEvent,
+  type FormEvent,
   type KeyboardEvent,
 } from 'react';
 import { matchSorter } from 'match-sorter';
@@ -11,6 +12,7 @@ import {
   ArrowUp,
   ChevronDown,
   ChevronRight,
+  ClipboardPaste,
   Copy,
   Languages,
   LoaderCircle,
@@ -24,7 +26,17 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 
 type JsonPrimitive = string | number | boolean | null;
@@ -251,6 +263,13 @@ const getTranslatedFileName = (fileName: string, targetLanguage: string): string
   fileName.match(/\.json$/i)
     ? fileName.replace(/\.json$/i, `.${targetLanguage}.json`)
     : `${fileName}.${targetLanguage}.json`;
+
+const normalizeJsonFileName = (fileName: string): string => {
+  const trimmedFileName = fileName.trim() || 'pasted.json';
+  return trimmedFileName.match(/\.json$/i)
+    ? trimmedFileName
+    : `${trimmedFileName}.json`;
+};
 
 const createDefaultValue = (kind: ValueKind): JsonValue => {
   switch (kind) {
@@ -794,6 +813,10 @@ export default function Home() {
   const [sourceLanguage, setSourceLanguage] = useState('en');
   const [targetLanguage, setTargetLanguage] = useState('fr');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isPasteDialogOpen, setIsPasteDialogOpen] = useState(false);
+  const [pasteFileName, setPasteFileName] = useState('pasted.json');
+  const [pasteJsonContent, setPasteJsonContent] = useState('');
+  const [pasteJsonError, setPasteJsonError] = useState<string | null>(null);
   const [translationJob, setTranslationJob] = useState<TranslationJob | null>(
     null,
   );
@@ -826,6 +849,20 @@ export default function Home() {
     );
   };
 
+  const addJsonFile = (fileName: string, data: JsonValue, idSeed: string) => {
+    const normalizedFileName = normalizeJsonFileName(fileName);
+    const nextFile = {
+      data,
+      fileName: normalizedFileName,
+      id: `${normalizedFileName}-${idSeed}-${crypto.randomUUID()}`,
+    };
+
+    setFiles((currentFiles) => [...currentFiles, nextFile]);
+    setSelectedSourceFileId((currentId) => currentId || nextFile.id);
+    setExpandedPaths((currentPaths) => new Set(currentPaths).add('[]'));
+    setError(null);
+  };
+
   const handleFilesSelected = (selectedFiles: File[]): void => {
     const jsonFiles = selectedFiles.filter(
       (file) =>
@@ -847,16 +884,7 @@ export default function Home() {
             throw new Error('The file contains values that are not valid JSON.');
           }
 
-          const nextFile = {
-            data: parsed,
-            fileName: file.name,
-            id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
-          };
-
-          setFiles((currentFiles) => [...currentFiles, nextFile]);
-          setSelectedSourceFileId((currentId) => currentId || nextFile.id);
-          setExpandedPaths((currentPaths) => new Set(currentPaths).add('[]'));
-          setError(null);
+          addJsonFile(file.name, parsed, String(file.lastModified));
         } catch (uploadError) {
           setError(
             `Error parsing JSON from ${file.name}: ${
@@ -868,6 +896,35 @@ export default function Home() {
         }
       };
       reader.readAsText(file);
+    }
+  };
+
+  const handlePasteJsonSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!pasteJsonContent.trim()) {
+      setPasteJsonError('Paste JSON content before adding a file.');
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(pasteJsonContent);
+
+      if (!isJsonValue(parsed)) {
+        throw new Error('The pasted content contains values that are not valid JSON.');
+      }
+
+      addJsonFile(pasteFileName, parsed, String(Date.now()));
+      setPasteFileName('pasted.json');
+      setPasteJsonContent('');
+      setPasteJsonError(null);
+      setIsPasteDialogOpen(false);
+    } catch (pasteError) {
+      setPasteJsonError(
+        pasteError instanceof Error
+          ? pasteError.message
+          : 'The pasted content is not valid JSON.',
+      );
     }
   };
 
@@ -1596,6 +1653,10 @@ export default function Home() {
               <Upload />
               Add JSON
             </label>
+            <Button variant='outline' onClick={() => setIsPasteDialogOpen(true)}>
+              <ClipboardPaste />
+              Paste JSON
+            </Button>
           </div>
         </div>
         <div className='mt-2 min-h-5 text-xs text-muted-foreground'>
@@ -1632,6 +1693,64 @@ export default function Home() {
         </Alert>
       )}
 
+      <Dialog open={isPasteDialogOpen} onOpenChange={setIsPasteDialogOpen}>
+        <DialogContent className='sm:max-w-2xl'>
+          <form className='grid gap-4' onSubmit={handlePasteJsonSubmit}>
+            <DialogHeader>
+              <DialogTitle>Paste JSON</DialogTitle>
+              <DialogDescription>
+                Add an existing JSON file by pasting its raw content.
+              </DialogDescription>
+            </DialogHeader>
+            <div className='grid gap-2'>
+              <Label htmlFor='paste-file-name'>File name</Label>
+              <Input
+                id='paste-file-name'
+                value={pasteFileName}
+                onChange={(event) => setPasteFileName(event.target.value)}
+                placeholder='id.json'
+              />
+            </div>
+            <div className='grid gap-2'>
+              <Label htmlFor='paste-json-content'>JSON content</Label>
+              <Textarea
+                id='paste-json-content'
+                aria-invalid={Boolean(pasteJsonError)}
+                className='min-h-72 resize-y font-mono text-sm'
+                value={pasteJsonContent}
+                onChange={(event) => {
+                  setPasteJsonContent(event.target.value);
+                  setPasteJsonError(null);
+                }}
+                placeholder='{"appName":"Trans Diff"}'
+              />
+              <div className='min-h-5 text-xs'>
+                {pasteJsonError ? (
+                  <span className='text-destructive'>{pasteJsonError}</span>
+                ) : (
+                  <span className='text-muted-foreground'>
+                    The pasted content must parse as JSON.
+                  </span>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type='button'
+                variant='outline'
+                onClick={() => setIsPasteDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type='submit'>
+                <Plus />
+                Add pasted JSON
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <main className='flex-1 overflow-hidden p-4'>
         {files.length === 0 ? (
           <Card
@@ -1651,17 +1770,24 @@ export default function Home() {
               <div>
                 <h2 className='text-lg font-semibold'>Add JSON files</h2>
                 <p className='mt-1 max-w-md text-sm text-muted-foreground'>
-                  Drag JSON files here, or select files to compare keys, edit
-                  typed values, and manage nested objects or arrays from one tree.
+                  Drag JSON files here, select files, or paste raw JSON to compare
+                  keys, edit typed values, and manage nested objects or arrays from
+                  one tree.
                 </p>
               </div>
-              <label
-                htmlFor='file-upload'
-                className={cn(buttonVariants(), 'cursor-pointer')}
-              >
-                <Upload />
-                Select files
-              </label>
+              <div className='flex flex-wrap justify-center gap-2'>
+                <label
+                  htmlFor='file-upload'
+                  className={cn(buttonVariants(), 'cursor-pointer')}
+                >
+                  <Upload />
+                  Select files
+                </label>
+                <Button variant='outline' onClick={() => setIsPasteDialogOpen(true)}>
+                  <ClipboardPaste />
+                  Paste JSON
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ) : (
