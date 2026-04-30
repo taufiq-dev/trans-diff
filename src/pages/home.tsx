@@ -1,9 +1,9 @@
 import {
   lazy,
   Suspense,
+  useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   useTransition,
   type ChangeEvent,
@@ -41,7 +41,6 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { debugPasteDialog, isPasteDialogDebugEnabled } from '@/lib/debug';
 import { cn } from '@/lib/utils';
 
 const JsonCodeEditor = lazy(() =>
@@ -80,6 +79,12 @@ type SearchablePath = {
 type AddDraft = {
   key: string;
   kind: ValueKind;
+};
+
+type PendingPastedJson = {
+  data: JsonValue;
+  fileName: string;
+  idSeed: string;
 };
 
 type LanguageOption = {
@@ -165,6 +170,8 @@ const VALUE_KINDS: ValueKind[] = [
   'object',
   'array',
 ];
+
+const PASTE_DIALOG_COMMIT_DELAY_MS = 150;
 
 const selectControlClassName =
   'appearance-none rounded-3xl border border-transparent bg-input/50 pl-3 pr-9 outline-none transition-[color,box-shadow,background-color] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-50';
@@ -573,18 +580,6 @@ const countLeaves = (value: JsonValue): number => {
   return 1;
 };
 
-const getJsonValueDebugSummary = (value: JsonValue): string => {
-  if (Array.isArray(value)) {
-    return `array:${value.length}`;
-  }
-
-  if (isJsonObject(value)) {
-    return `object:${Object.keys(value).length}`;
-  }
-
-  return getValueKind(value);
-};
-
 const collectChildSegments = (
   files: TranslationFile[],
   path: JsonPath,
@@ -837,6 +832,8 @@ export default function Home() {
   const [targetLanguage, setTargetLanguage] = useState('fr');
   const [searchQuery, setSearchQuery] = useState('');
   const [isPasteDialogOpen, setIsPasteDialogOpen] = useState(false);
+  const [pendingPastedJson, setPendingPastedJson] =
+    useState<PendingPastedJson | null>(null);
   const [pasteFileName, setPasteFileName] = useState('pasted.json');
   const [pasteJsonContent, setPasteJsonContent] = useState('');
   const [pasteJsonError, setPasteJsonError] = useState<string | null>(null);
@@ -849,8 +846,6 @@ export default function Home() {
   const [addDrafts, setAddDrafts] = useState<Record<string, AddDraft>>({});
   const [renameDrafts, setRenameDrafts] = useState<Record<string, string>>({});
   const [, startPasteJsonTransition] = useTransition();
-  const pasteDialogCommitCountRef = useRef(0);
-  const previousPasteDialogOpenRef = useRef(isPasteDialogOpen);
   const isTranslatorSupported = getTranslatorFactory() !== null;
 
   const gridTemplateColumns = useMemo(
@@ -867,40 +862,6 @@ export default function Home() {
   const selectedSourceFile =
     files.find((file) => file.id === selectedSourceFileId) ?? files[0] ?? null;
 
-  useEffect(() => {
-    pasteDialogCommitCountRef.current += 1;
-
-    if (
-      isPasteDialogDebugEnabled() &&
-      (isPasteDialogOpen || pasteJsonContent || pasteJsonError)
-    ) {
-      debugPasteDialog('commit', {
-        chars: pasteJsonContent.length,
-        commit: pasteDialogCommitCountRef.current,
-        files: files.length,
-        hasError: Boolean(pasteJsonError),
-        open: isPasteDialogOpen,
-      });
-    }
-  });
-
-  useEffect(() => {
-    debugPasteDialog('open-state-commit', {
-      nextOpen: isPasteDialogOpen,
-      previousOpen: previousPasteDialogOpenRef.current,
-      commit: pasteDialogCommitCountRef.current,
-    });
-    previousPasteDialogOpenRef.current = isPasteDialogOpen;
-  }, [isPasteDialogOpen]);
-
-  useEffect(() => {
-    debugPasteDialog('file-count-commit', {
-      commit: pasteDialogCommitCountRef.current,
-      files: files.length,
-      open: isPasteDialogOpen,
-    });
-  }, [files.length, isPasteDialogOpen]);
-
   const updateFileData = (fileId: string, updater: (data: JsonValue) => JsonValue) => {
     setFiles((currentFiles) =>
       currentFiles.map((file) =>
@@ -909,33 +870,54 @@ export default function Home() {
     );
   };
 
-  const addJsonFile = (fileName: string, data: JsonValue, idSeed: string) => {
-    const normalizedFileName = normalizeJsonFileName(fileName);
-    const nextFile = {
-      data,
-      fileName: normalizedFileName,
-      id: `${normalizedFileName}-${idSeed}-${crypto.randomUUID()}`,
-    };
+  const addJsonFile = useCallback(
+    (fileName: string, data: JsonValue, idSeed: string) => {
+      const normalizedFileName = normalizeJsonFileName(fileName);
+      const nextFile = {
+        data,
+        fileName: normalizedFileName,
+        id: `${normalizedFileName}-${idSeed}-${crypto.randomUUID()}`,
+      };
 
-    setFiles((currentFiles) => [...currentFiles, nextFile]);
-    setSelectedSourceFileId((currentId) => currentId || nextFile.id);
-    setExpandedPaths((currentPaths) => new Set(currentPaths).add('[]'));
-    setError(null);
-  };
+      setFiles((currentFiles) => [...currentFiles, nextFile]);
+      setSelectedSourceFileId((currentId) => currentId || nextFile.id);
+      setExpandedPaths((currentPaths) => new Set(currentPaths).add('[]'));
+      setError(null);
+    },
+    [],
+  );
 
-  const openPasteDialog = (source: 'empty-state' | 'toolbar') => {
-    debugPasteDialog('open-request', {
-      currentOpen: isPasteDialogOpen,
-      source,
-    });
+  useEffect(() => {
+    if (isPasteDialogOpen || pendingPastedJson === null) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      startPasteJsonTransition(() => {
+        addJsonFile(
+          pendingPastedJson.fileName,
+          pendingPastedJson.data,
+          pendingPastedJson.idSeed,
+        );
+        setPasteFileName('pasted.json');
+        setPasteJsonContent('');
+        setPendingPastedJson(null);
+      });
+    }, PASTE_DIALOG_COMMIT_DELAY_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    addJsonFile,
+    isPasteDialogOpen,
+    pendingPastedJson,
+    startPasteJsonTransition,
+  ]);
+
+  const openPasteDialog = () => {
     setIsPasteDialogOpen(true);
   };
 
   const handlePasteDialogOpenChange = (nextOpen: boolean) => {
-    debugPasteDialog('dialog-open-change', {
-      currentOpen: isPasteDialogOpen,
-      nextOpen,
-    });
     setIsPasteDialogOpen(nextOpen);
   };
 
@@ -978,13 +960,7 @@ export default function Home() {
   const handlePasteJsonSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    debugPasteDialog('submit-start', {
-      chars: pasteJsonContent.length,
-      open: isPasteDialogOpen,
-    });
-
     if (!pasteJsonContent.trim()) {
-      debugPasteDialog('submit-empty');
       setPasteJsonError('Paste JSON content before adding a file.');
       return;
     }
@@ -999,34 +975,14 @@ export default function Home() {
       const submittedFileName = pasteFileName;
       const submittedAt = String(Date.now());
 
-      debugPasteDialog('submit-parse-success', {
-        chars: pasteJsonContent.length,
-        fileName: submittedFileName,
-        leafCount: countLeaves(parsed),
-        root: getJsonValueDebugSummary(parsed),
-      });
-
       setPasteJsonError(null);
-      debugPasteDialog('submit-close-request', {
-        open: isPasteDialogOpen,
+      setPendingPastedJson({
+        data: parsed,
+        fileName: submittedFileName,
+        idSeed: submittedAt,
       });
       setIsPasteDialogOpen(false);
-
-      startPasteJsonTransition(() => {
-        debugPasteDialog('submit-transition-updates', {
-          fileName: submittedFileName,
-        });
-        addJsonFile(submittedFileName, parsed, submittedAt);
-        setPasteFileName('pasted.json');
-        setPasteJsonContent('');
-      });
     } catch (pasteError) {
-      debugPasteDialog('submit-error', {
-        message:
-          pasteError instanceof Error
-            ? pasteError.message
-            : 'The pasted content is not valid JSON.',
-      });
       setPasteJsonError(
         pasteError instanceof Error
           ? pasteError.message
@@ -1760,7 +1716,7 @@ export default function Home() {
               <Upload />
               Add JSON
             </label>
-            <Button variant='outline' onClick={() => openPasteDialog('toolbar')}>
+            <Button variant='outline' onClick={openPasteDialog}>
               <ClipboardPaste />
               Paste JSON
             </Button>
@@ -1903,7 +1859,7 @@ export default function Home() {
                 </label>
                 <Button
                   variant='outline'
-                  onClick={() => openPasteDialog('empty-state')}
+                  onClick={openPasteDialog}
                 >
                   <ClipboardPaste />
                   Paste JSON

@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { json } from '@codemirror/lang-json';
 import { basicSetup, EditorView } from 'codemirror';
-import { debugPasteDialog } from '@/lib/debug';
 import { cn } from '@/lib/utils';
 
 type JsonCodeEditorProps = {
@@ -57,7 +56,6 @@ function JsonCodeEditor({
 }: JsonCodeEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<EditorView | null>(null);
-  const initialIdRef = useRef(id);
   const initialValueRef = useRef(value);
   const onChangeRef = useRef(onChange);
 
@@ -70,13 +68,6 @@ function JsonCodeEditor({
       return undefined;
     }
 
-    const editorId = initialIdRef.current;
-
-    debugPasteDialog('codemirror-mount', {
-      chars: initialValueRef.current.length,
-      id: editorId,
-    });
-
     const editor = new EditorView({
       doc: initialValueRef.current,
       extensions: [
@@ -85,12 +76,7 @@ function JsonCodeEditor({
         jsonEditorTheme,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
-            const nextValue = update.state.doc.toString();
-            debugPasteDialog('codemirror-doc-changed', {
-              chars: nextValue.length,
-              id: editorId,
-            });
-            onChangeRef.current(nextValue);
+            onChangeRef.current(update.state.doc.toString());
           }
         }),
       ],
@@ -100,7 +86,6 @@ function JsonCodeEditor({
     editorRef.current = editor;
 
     return () => {
-      debugPasteDialog('codemirror-unmount', { id: editorId });
       editor.destroy();
       editorRef.current = null;
     };
