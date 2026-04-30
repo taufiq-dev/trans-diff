@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
   type ChangeEvent,
@@ -41,6 +42,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { debugPasteDialog, isPasteDialogDebugEnabled } from '@/lib/debug';
 import { cn } from '@/lib/utils';
 
 const JsonCodeEditor = lazy(() =>
@@ -580,6 +582,18 @@ const countLeaves = (value: JsonValue): number => {
   return 1;
 };
 
+const getJsonValueDebugSummary = (value: JsonValue): string => {
+  if (Array.isArray(value)) {
+    return `array:${value.length}`;
+  }
+
+  if (isJsonObject(value)) {
+    return `object:${Object.keys(value).length}`;
+  }
+
+  return getValueKind(value);
+};
+
 const collectChildSegments = (
   files: TranslationFile[],
   path: JsonPath,
@@ -846,6 +860,8 @@ export default function Home() {
   const [addDrafts, setAddDrafts] = useState<Record<string, AddDraft>>({});
   const [renameDrafts, setRenameDrafts] = useState<Record<string, string>>({});
   const [, startPasteJsonTransition] = useTransition();
+  const pasteDialogCommitCountRef = useRef(0);
+  const previousPasteDialogOpenRef = useRef(isPasteDialogOpen);
   const isTranslatorSupported = getTranslatorFactory() !== null;
 
   const gridTemplateColumns = useMemo(
@@ -861,6 +877,44 @@ export default function Home() {
   const notSyncedPathCount = useMemo(() => countNotSyncedPaths(files), [files]);
   const selectedSourceFile =
     files.find((file) => file.id === selectedSourceFileId) ?? files[0] ?? null;
+
+  useEffect(() => {
+    pasteDialogCommitCountRef.current += 1;
+
+    if (
+      isPasteDialogDebugEnabled() &&
+      (isPasteDialogOpen ||
+        pendingPastedJson !== null ||
+        pasteJsonContent ||
+        pasteJsonError)
+    ) {
+      debugPasteDialog('commit', {
+        chars: pasteJsonContent.length,
+        commit: pasteDialogCommitCountRef.current,
+        files: files.length,
+        hasError: Boolean(pasteJsonError),
+        hasPending: pendingPastedJson !== null,
+        open: isPasteDialogOpen,
+      });
+    }
+  });
+
+  useEffect(() => {
+    debugPasteDialog('open-state-commit', {
+      commit: pasteDialogCommitCountRef.current,
+      nextOpen: isPasteDialogOpen,
+      previousOpen: previousPasteDialogOpenRef.current,
+    });
+    previousPasteDialogOpenRef.current = isPasteDialogOpen;
+  }, [isPasteDialogOpen]);
+
+  useEffect(() => {
+    debugPasteDialog('file-count-commit', {
+      commit: pasteDialogCommitCountRef.current,
+      files: files.length,
+      open: isPasteDialogOpen,
+    });
+  }, [files.length, isPasteDialogOpen]);
 
   const updateFileData = (fileId: string, updater: (data: JsonValue) => JsonValue) => {
     setFiles((currentFiles) =>
@@ -879,6 +933,12 @@ export default function Home() {
         id: `${normalizedFileName}-${idSeed}-${crypto.randomUUID()}`,
       };
 
+      debugPasteDialog('add-json-file', {
+        fileName: normalizedFileName,
+        idSeed,
+        leafCount: countLeaves(data),
+        root: getJsonValueDebugSummary(data),
+      });
       setFiles((currentFiles) => [...currentFiles, nextFile]);
       setSelectedSourceFileId((currentId) => currentId || nextFile.id);
       setExpandedPaths((currentPaths) => new Set(currentPaths).add('[]'));
@@ -892,8 +952,19 @@ export default function Home() {
       return undefined;
     }
 
+    debugPasteDialog('pending-commit-scheduled', {
+      delayMs: PASTE_DIALOG_COMMIT_DELAY_MS,
+      fileName: pendingPastedJson.fileName,
+    });
+
     const timeoutId = window.setTimeout(() => {
+      debugPasteDialog('pending-commit-timeout-fired', {
+        fileName: pendingPastedJson.fileName,
+      });
       startPasteJsonTransition(() => {
+        debugPasteDialog('pending-commit-transition-updates', {
+          fileName: pendingPastedJson.fileName,
+        });
         addJsonFile(
           pendingPastedJson.fileName,
           pendingPastedJson.data,
@@ -905,7 +976,12 @@ export default function Home() {
       });
     }, PASTE_DIALOG_COMMIT_DELAY_MS);
 
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      debugPasteDialog('pending-commit-cleanup', {
+        fileName: pendingPastedJson.fileName,
+      });
+      window.clearTimeout(timeoutId);
+    };
   }, [
     addJsonFile,
     isPasteDialogOpen,
@@ -914,10 +990,17 @@ export default function Home() {
   ]);
 
   const openPasteDialog = () => {
+    debugPasteDialog('open-request', {
+      currentOpen: isPasteDialogOpen,
+    });
     setIsPasteDialogOpen(true);
   };
 
   const handlePasteDialogOpenChange = (nextOpen: boolean) => {
+    debugPasteDialog('dialog-open-change', {
+      currentOpen: isPasteDialogOpen,
+      nextOpen,
+    });
     setIsPasteDialogOpen(nextOpen);
   };
 
@@ -960,7 +1043,13 @@ export default function Home() {
   const handlePasteJsonSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
+    debugPasteDialog('submit-start', {
+      chars: pasteJsonContent.length,
+      open: isPasteDialogOpen,
+    });
+
     if (!pasteJsonContent.trim()) {
+      debugPasteDialog('submit-empty');
       setPasteJsonError('Paste JSON content before adding a file.');
       return;
     }
@@ -975,14 +1064,30 @@ export default function Home() {
       const submittedFileName = pasteFileName;
       const submittedAt = String(Date.now());
 
+      debugPasteDialog('submit-parse-success', {
+        chars: pasteJsonContent.length,
+        fileName: submittedFileName,
+        leafCount: countLeaves(parsed),
+        root: getJsonValueDebugSummary(parsed),
+      });
       setPasteJsonError(null);
       setPendingPastedJson({
         data: parsed,
         fileName: submittedFileName,
         idSeed: submittedAt,
       });
+      debugPasteDialog('submit-close-request', {
+        fileName: submittedFileName,
+        open: isPasteDialogOpen,
+      });
       setIsPasteDialogOpen(false);
     } catch (pasteError) {
+      debugPasteDialog('submit-error', {
+        message:
+          pasteError instanceof Error
+            ? pasteError.message
+            : 'The pasted content is not valid JSON.',
+      });
       setPasteJsonError(
         pasteError instanceof Error
           ? pasteError.message
@@ -1757,7 +1862,21 @@ export default function Home() {
       )}
 
       <Dialog open={isPasteDialogOpen} onOpenChange={handlePasteDialogOpenChange}>
-        <DialogContent className='flex h-[min(720px,calc(100svh-2rem))] max-h-[calc(100svh-2rem)] overflow-hidden p-0 sm:max-w-3xl'>
+        <DialogContent
+          className='flex h-[min(720px,calc(100svh-2rem))] max-h-[calc(100svh-2rem)] overflow-hidden p-0 sm:max-w-3xl'
+          onAnimationEnd={(event) => {
+            debugPasteDialog('dialog-animation-end', {
+              animationName: event.animationName,
+              open: isPasteDialogOpen,
+            });
+          }}
+          onAnimationStart={(event) => {
+            debugPasteDialog('dialog-animation-start', {
+              animationName: event.animationName,
+              open: isPasteDialogOpen,
+            });
+          }}
+        >
           <form
             className='flex min-h-0 flex-1 flex-col'
             onSubmit={handlePasteJsonSubmit}
