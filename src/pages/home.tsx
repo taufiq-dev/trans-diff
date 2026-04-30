@@ -1,6 +1,4 @@
 import {
-  lazy,
-  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -12,7 +10,6 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
-import { matchSorter } from 'match-sorter';
 import {
   ArrowDown,
   ArrowUp,
@@ -29,54 +26,64 @@ import {
   Upload,
   X,
 } from 'lucide-react';
+import { GithubMarkIcon } from '@/components/github-mark-icon';
+import {
+  KindSelect,
+  LanguageSelect,
+  SelectIndicator,
+  StatusBadge,
+} from '@/components/json-tree-controls';
+import { PasteJsonDialog } from '@/components/paste-json-dialog';
+import { selectControlClassName } from '@/components/select-control';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import {
+  countTranslatableStrings,
+  getTranslatedFileName,
+  getTranslatorFactory,
+  translateJsonValue,
+  type BuiltInTranslator,
+  type TranslationJob,
+} from '@/lib/browser-translator';
 import { debugPasteDialog, isPasteDialogDebugEnabled } from '@/lib/debug';
+import {
+  collectChildSegments,
+  collectVisiblePaths,
+  coerceValue,
+  countLeaves,
+  countNotSyncedPaths,
+  createDefaultValue,
+  createSearchFilter,
+  draftKey,
+  duplicateValue,
+  formatPath,
+  formatSegment,
+  getJsonValueDebugSummary,
+  getPathStatus,
+  getSuggestedKind,
+  getValueAtPath,
+  getValueKind,
+  insertArrayItem,
+  isJsonObject,
+  isJsonValue,
+  MISSING,
+  moveArrayItem,
+  normalizeJsonFileName,
+  pathToKey,
+  removeValueAtPath,
+  renameKeyAtPath,
+  setValueAtPath,
+  type JsonArray,
+  type JsonObject,
+  type JsonPath,
+  type JsonPrimitive,
+  type JsonValue,
+  type TranslationFile,
+  type ValueKind,
+} from '@/lib/json-tree';
 import { cn } from '@/lib/utils';
-
-const JsonCodeEditor = lazy(() =>
-  import('@/components/json-code-editor').then((module) => ({
-    default: module.JsonCodeEditor,
-  })),
-);
-
-type JsonPrimitive = string | number | boolean | null;
-type JsonArray = JsonValue[];
-type JsonObject = { [key: string]: JsonValue };
-type JsonValue = JsonPrimitive | JsonArray | JsonObject;
-type PathSegment = string | number;
-type JsonPath = PathSegment[];
-type ValueKind = 'string' | 'number' | 'boolean' | 'null' | 'object' | 'array';
-type TranslatorAvailability = 'available' | 'downloadable' | 'unavailable';
-
-type TranslationFile = {
-  id: string;
-  data: JsonValue;
-  fileName: string;
-};
-
-type SearchFilter = {
-  matchCount: number;
-  visiblePathKeys: Set<string>;
-};
-
-type SearchablePath = {
-  dottedPath: string;
-  formattedPath: string;
-  path: JsonPath;
-  segment: string;
-};
 
 type AddDraft = {
   key: string;
@@ -89,753 +96,8 @@ type PendingPastedJson = {
   idSeed: string;
 };
 
-type LanguageOption = {
-  code: string;
-  label: string;
-};
-
-type TranslationJob = {
-  completed: number;
-  downloadProgress: number | null;
-  fileId: string;
-  phase: 'checking' | 'downloading' | 'translating';
-  total: number;
-};
-
-type BuiltInTranslator = {
-  destroy?: () => void;
-  translate: (input: string) => Promise<string>;
-};
-
-type BuiltInTranslatorFactory = {
-  availability: (options: {
-    sourceLanguage: string;
-    targetLanguage: string;
-  }) => Promise<TranslatorAvailability | string>;
-  create: (options: {
-    monitor?: (monitor: EventTarget) => void;
-    sourceLanguage: string;
-    targetLanguage: string;
-  }) => Promise<BuiltInTranslator>;
-};
-
-const MISSING = Symbol('missing');
-type Missing = typeof MISSING;
-
-const TRANSLATOR_LANGUAGES: LanguageOption[] = [
-  { code: 'ar', label: 'Arabic' },
-  { code: 'bg', label: 'Bulgarian' },
-  { code: 'bn', label: 'Bengali' },
-  { code: 'cs', label: 'Czech' },
-  { code: 'da', label: 'Danish' },
-  { code: 'de', label: 'German' },
-  { code: 'el', label: 'Greek' },
-  { code: 'en', label: 'English' },
-  { code: 'es', label: 'Spanish' },
-  { code: 'fi', label: 'Finnish' },
-  { code: 'fr', label: 'French' },
-  { code: 'hi', label: 'Hindi' },
-  { code: 'hr', label: 'Croatian' },
-  { code: 'hu', label: 'Hungarian' },
-  { code: 'id', label: 'Indonesian' },
-  { code: 'it', label: 'Italian' },
-  { code: 'iw', label: 'Hebrew' },
-  { code: 'ja', label: 'Japanese' },
-  { code: 'kn', label: 'Kannada' },
-  { code: 'ko', label: 'Korean' },
-  { code: 'lt', label: 'Lithuanian' },
-  { code: 'mr', label: 'Marathi' },
-  { code: 'nl', label: 'Dutch' },
-  { code: 'no', label: 'Norwegian' },
-  { code: 'pl', label: 'Polish' },
-  { code: 'pt', label: 'Portuguese' },
-  { code: 'ro', label: 'Romanian' },
-  { code: 'ru', label: 'Russian' },
-  { code: 'sk', label: 'Slovak' },
-  { code: 'sl', label: 'Slovenian' },
-  { code: 'sv', label: 'Swedish' },
-  { code: 'ta', label: 'Tamil' },
-  { code: 'te', label: 'Telugu' },
-  { code: 'th', label: 'Thai' },
-  { code: 'tr', label: 'Turkish' },
-  { code: 'uk', label: 'Ukrainian' },
-  { code: 'vi', label: 'Vietnamese' },
-  { code: 'zh', label: 'Chinese' },
-  { code: 'zh-Hant', label: 'Chinese (Traditional)' },
-];
-
-const VALUE_KINDS: ValueKind[] = [
-  'string',
-  'number',
-  'boolean',
-  'null',
-  'object',
-  'array',
-];
-
 const PASTE_DIALOG_COMMIT_DELAY_MS = 150;
-
-const selectControlClassName =
-  'appearance-none rounded-3xl border border-transparent bg-input/50 pl-3 pr-9 outline-none transition-[color,box-shadow,background-color] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-50';
-
-const isJsonObject = (value: unknown): value is JsonObject =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
-const isJsonValue = (value: unknown): value is JsonValue => {
-  if (
-    value === null ||
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
-  ) {
-    return Number.isFinite(value) || typeof value !== 'number';
-  }
-
-  if (Array.isArray(value)) {
-    return value.every(isJsonValue);
-  }
-
-  if (isJsonObject(value)) {
-    return Object.values(value).every(isJsonValue);
-  }
-
-  return false;
-};
-
-const cloneJson = <T extends JsonValue>(value: T): T =>
-  JSON.parse(JSON.stringify(value)) as T;
-
-const getTranslatorFactory = (): BuiltInTranslatorFactory | null => {
-  if (typeof self === 'undefined' || !('Translator' in self)) {
-    return null;
-  }
-
-  return (self as unknown as { Translator: BuiltInTranslatorFactory }).Translator;
-};
-
-const countTranslatableStrings = (value: JsonValue): number => {
-  if (typeof value === 'string') {
-    return value.trim() ? 1 : 0;
-  }
-
-  if (Array.isArray(value)) {
-    return value.reduce<number>(
-      (total, item) => total + countTranslatableStrings(item),
-      0,
-    );
-  }
-
-  if (isJsonObject(value)) {
-    return Object.values(value).reduce<number>(
-      (total, item) => total + countTranslatableStrings(item),
-      0,
-    );
-  }
-
-  return 0;
-};
-
-const translateJsonValue = async (
-  value: JsonValue,
-  translateText: (input: string) => Promise<string>,
-  onTranslatedString: () => void,
-): Promise<JsonValue> => {
-  if (typeof value === 'string') {
-    if (!value.trim()) {
-      return value;
-    }
-
-    const translated = await translateText(value);
-    onTranslatedString();
-    return translated;
-  }
-
-  if (Array.isArray(value)) {
-    const translatedItems: JsonArray = [];
-
-    for (const item of value) {
-      translatedItems.push(
-        await translateJsonValue(item, translateText, onTranslatedString),
-      );
-    }
-
-    return translatedItems;
-  }
-
-  if (isJsonObject(value)) {
-    const translatedObject: JsonObject = {};
-
-    for (const [key, item] of Object.entries(value)) {
-      translatedObject[key] = await translateJsonValue(
-        item,
-        translateText,
-        onTranslatedString,
-      );
-    }
-
-    return translatedObject;
-  }
-
-  return value;
-};
-
-const getTranslatedFileName = (fileName: string, targetLanguage: string): string =>
-  fileName.match(/\.json$/i)
-    ? fileName.replace(/\.json$/i, `.${targetLanguage}.json`)
-    : `${fileName}.${targetLanguage}.json`;
-
-const normalizeJsonFileName = (fileName: string): string => {
-  const trimmedFileName = fileName.trim() || 'pasted.json';
-  return trimmedFileName.match(/\.json$/i)
-    ? trimmedFileName
-    : `${trimmedFileName}.json`;
-};
-
-const createDefaultValue = (kind: ValueKind): JsonValue => {
-  switch (kind) {
-    case 'array':
-      return [];
-    case 'boolean':
-      return false;
-    case 'null':
-      return null;
-    case 'number':
-      return 0;
-    case 'object':
-      return {};
-    case 'string':
-      return '';
-  }
-};
-
-const getValueKind = (value: JsonValue): ValueKind => {
-  if (Array.isArray(value)) {
-    return 'array';
-  }
-
-  if (isJsonObject(value)) {
-    return 'object';
-  }
-
-  if (value === null) {
-    return 'null';
-  }
-
-  if (typeof value === 'string') {
-    return 'string';
-  }
-
-  if (typeof value === 'number') {
-    return 'number';
-  }
-
-  return 'boolean';
-};
-
-const coerceValue = (value: JsonValue | Missing, kind: ValueKind): JsonValue => {
-  if (value === MISSING) {
-    return createDefaultValue(kind);
-  }
-
-  if (kind === 'string') {
-    return typeof value === 'string' ? value : JSON.stringify(value);
-  }
-
-  if (kind === 'number') {
-    if (typeof value === 'number') {
-      return value;
-    }
-
-    if (typeof value === 'string') {
-      const numericValue = Number(value);
-      return Number.isFinite(numericValue) ? numericValue : 0;
-    }
-
-    return 0;
-  }
-
-  if (kind === 'boolean') {
-    if (typeof value === 'boolean') {
-      return value;
-    }
-
-    if (typeof value === 'string') {
-      return value.toLowerCase() === 'true';
-    }
-
-    return Boolean(value);
-  }
-
-  return createDefaultValue(kind);
-};
-
-const getValueAtPath = (root: JsonValue, path: JsonPath): JsonValue | Missing => {
-  let current: JsonValue | undefined = root;
-
-  for (const segment of path) {
-    if (typeof segment === 'number') {
-      if (!Array.isArray(current) || segment >= current.length) {
-        return MISSING;
-      }
-      current = current[segment];
-      continue;
-    }
-
-    if (!isJsonObject(current) || !(segment in current)) {
-      return MISSING;
-    }
-    current = current[segment];
-  }
-
-  return current === undefined ? MISSING : current;
-};
-
-const defaultContainerFor = (segment: PathSegment | undefined): JsonValue =>
-  typeof segment === 'number' ? [] : {};
-
-const setValueAtPath = (
-  current: JsonValue | Missing,
-  path: JsonPath,
-  value: JsonValue,
-): JsonValue => {
-  if (path.length === 0) {
-    return value;
-  }
-
-  const [segment, ...rest] = path;
-
-  if (typeof segment === 'number') {
-    const next = Array.isArray(current) ? [...current] : [];
-    next[segment] = setValueAtPath(
-      next[segment] ?? defaultContainerFor(rest[0]),
-      rest,
-      value,
-    );
-    return next;
-  }
-
-  const next = isJsonObject(current) ? { ...current } : {};
-  next[segment] = setValueAtPath(
-    next[segment] ?? defaultContainerFor(rest[0]),
-    rest,
-    value,
-  );
-  return next;
-};
-
-const removeValueAtPath = (current: JsonValue, path: JsonPath): JsonValue => {
-  if (path.length === 0) {
-    return {};
-  }
-
-  const [segment, ...rest] = path;
-
-  if (typeof segment === 'number') {
-    if (!Array.isArray(current)) {
-      return current;
-    }
-
-    const next = [...current];
-    if (rest.length === 0) {
-      next.splice(segment, 1);
-    } else {
-      next[segment] = removeValueAtPath(next[segment], rest);
-    }
-    return next;
-  }
-
-  if (!isJsonObject(current) || !(segment in current)) {
-    return current;
-  }
-
-  const next = { ...current };
-  if (rest.length === 0) {
-    delete next[segment];
-  } else {
-    next[segment] = removeValueAtPath(next[segment], rest);
-  }
-  return next;
-};
-
-const renameKeyAtPath = (
-  current: JsonValue,
-  path: JsonPath,
-  nextKey: string,
-): JsonValue => {
-  const oldKey = path[path.length - 1];
-  const parentPath = path.slice(0, -1);
-
-  if (typeof oldKey !== 'string' || !nextKey.trim()) {
-    return current;
-  }
-
-  const parent = getValueAtPath(current, parentPath);
-  if (!isJsonObject(parent) || !(oldKey in parent)) {
-    return current;
-  }
-
-  if (nextKey !== oldKey && nextKey in parent) {
-    return current;
-  }
-
-  const renamedParent = Object.entries(parent).reduce<JsonObject>(
-    (acc, [key, value]) => {
-      acc[key === oldKey ? nextKey : key] = value;
-      return acc;
-    },
-    {},
-  );
-
-  return setValueAtPath(current, parentPath, renamedParent);
-};
-
-const moveArrayItem = (
-  current: JsonValue,
-  parentPath: JsonPath,
-  index: number,
-  direction: -1 | 1,
-): JsonValue => {
-  const parent = getValueAtPath(current, parentPath);
-  const nextIndex = index + direction;
-
-  if (!Array.isArray(parent) || nextIndex < 0 || nextIndex >= parent.length) {
-    return current;
-  }
-
-  const next = [...parent];
-  const [item] = next.splice(index, 1);
-  next.splice(nextIndex, 0, item);
-  return setValueAtPath(current, parentPath, next);
-};
-
-const insertArrayItem = (
-  current: JsonValue,
-  path: JsonPath,
-  value: JsonValue,
-): JsonValue => {
-  const existing = getValueAtPath(current, path);
-  const next = Array.isArray(existing) ? [...existing, value] : [value];
-  return setValueAtPath(current, path, next);
-};
-
-const duplicateValue = (
-  current: JsonValue,
-  parentPath: JsonPath,
-  index: number,
-): JsonValue => {
-  const parent = getValueAtPath(current, parentPath);
-
-  if (!Array.isArray(parent) || !(index in parent)) {
-    return current;
-  }
-
-  const next = [...parent];
-  next.splice(index + 1, 0, cloneJson(parent[index]));
-  return setValueAtPath(current, parentPath, next);
-};
-
-const pathToKey = (path: JsonPath): string => JSON.stringify(path);
-
-const draftKey = (fileId: string, path: JsonPath): string =>
-  `${fileId}:${pathToKey(path)}`;
-
-const formatPath = (path: JsonPath): string => {
-  if (path.length === 0) {
-    return '$';
-  }
-
-  return path.reduce<string>((acc, segment) => {
-    if (typeof segment === 'number') {
-      return `${acc}[${segment}]`;
-    }
-
-    return `${acc}.${segment}`;
-  }, '$');
-};
-
-const formatDottedPath = (path: JsonPath): string =>
-  path.map((segment) => String(segment)).join('.');
-
-const formatSegment = (segment: PathSegment | undefined): string => {
-  if (segment === undefined) {
-    return 'Root';
-  }
-
-  return typeof segment === 'number' ? `[${segment}]` : segment;
-};
-
-const countLeaves = (value: JsonValue): number => {
-  if (Array.isArray(value)) {
-    return value.reduce<number>(
-      (total, item) => total + countLeaves(item),
-      0,
-    );
-  }
-
-  if (isJsonObject(value)) {
-    return Object.values(value).reduce<number>(
-      (total, item) => total + countLeaves(item),
-      0,
-    );
-  }
-
-  return 1;
-};
-
-const getJsonValueDebugSummary = (value: JsonValue): string => {
-  if (Array.isArray(value)) {
-    return `array:${value.length}`;
-  }
-
-  if (isJsonObject(value)) {
-    return `object:${Object.keys(value).length}`;
-  }
-
-  return getValueKind(value);
-};
-
-const collectChildSegments = (
-  files: TranslationFile[],
-  path: JsonPath,
-): PathSegment[] => {
-  const segments = new Set<PathSegment>();
-
-  for (const file of files) {
-    const value = getValueAtPath(file.data, path);
-
-    if (Array.isArray(value)) {
-      value.forEach((_, index) => segments.add(index));
-    } else if (isJsonObject(value)) {
-      Object.keys(value).forEach((key) => segments.add(key));
-    }
-  }
-
-  return Array.from(segments).sort((a, b) => {
-    if (typeof a === 'number' && typeof b === 'number') {
-      return a - b;
-    }
-
-    if (typeof a === 'number') {
-      return -1;
-    }
-
-    if (typeof b === 'number') {
-      return 1;
-    }
-
-    return a.localeCompare(b);
-  });
-};
-
-const collectVisiblePaths = (files: TranslationFile[]): JsonPath[] => {
-  if (files.length === 0) {
-    return [];
-  }
-
-  const paths: JsonPath[] = [[]];
-
-  for (let index = 0; index < paths.length; index += 1) {
-    const path = paths[index];
-    const childSegments = collectChildSegments(files, path);
-
-    childSegments.forEach((segment) => {
-      paths.push([...path, segment]);
-    });
-  }
-
-  return paths;
-};
-
-const countNotSyncedPaths = (files: TranslationFile[]): number =>
-  collectVisiblePaths(files).filter((path) => {
-    const status = getPathStatus(files, path);
-    return (
-      status.label !== 'Synced' &&
-      !status.label.toLowerCase().includes('missing')
-    );
-  }).length;
-
-const isDescendantPath = (path: JsonPath, ancestorPath: JsonPath): boolean =>
-  path.length > ancestorPath.length &&
-  ancestorPath.every((segment, index) => path[index] === segment);
-
-const createSearchFilter = (
-  paths: JsonPath[],
-  query: string,
-): SearchFilter | null => {
-  const trimmedQuery = query.trim();
-
-  if (!trimmedQuery) {
-    return null;
-  }
-
-  const searchablePaths: SearchablePath[] = paths
-    .filter((path) => path.length > 0)
-    .map((path) => ({
-      dottedPath: formatDottedPath(path),
-      formattedPath: formatPath(path),
-      path,
-      segment: formatSegment(path[path.length - 1]),
-    }));
-  const matchedPaths = matchSorter(searchablePaths, trimmedQuery, {
-    keys: ['segment', 'dottedPath', 'formattedPath'],
-  });
-  const visiblePathKeys = new Set<string>();
-
-  matchedPaths.forEach((matchedPath) => {
-    for (let index = 0; index <= matchedPath.path.length; index += 1) {
-      visiblePathKeys.add(pathToKey(matchedPath.path.slice(0, index)));
-    }
-  });
-
-  paths.forEach((path) => {
-    if (
-      matchedPaths.some((matchedPath) =>
-        isDescendantPath(path, matchedPath.path),
-      )
-    ) {
-      visiblePathKeys.add(pathToKey(path));
-    }
-  });
-
-  return {
-    matchCount: matchedPaths.length,
-    visiblePathKeys,
-  };
-};
-
-const getSuggestedKind = (
-  files: TranslationFile[],
-  path: JsonPath,
-): ValueKind => {
-  for (const file of files) {
-    const value = getValueAtPath(file.data, path);
-    if (value !== MISSING) {
-      return getValueKind(value);
-    }
-  }
-
-  return 'string';
-};
-
-const getPathStatus = (
-  files: TranslationFile[],
-  path: JsonPath,
-): { label: string; tone: 'default' | 'danger' | 'warning' | 'success' } => {
-  const values = files.map((file) => getValueAtPath(file.data, path));
-  const missingCount = values.filter((value) => value === MISSING).length;
-
-  if (missingCount === values.length) {
-    return { label: 'Missing', tone: 'danger' };
-  }
-
-  if (missingCount > 0) {
-    return { label: `${missingCount} missing`, tone: 'warning' };
-  }
-
-  const kinds = new Set(
-    values.map((value) => getValueKind(value as JsonValue)),
-  );
-
-  if (kinds.size > 1) {
-    return { label: 'Type mismatch', tone: 'warning' };
-  }
-
-  return { label: 'Synced', tone: 'success' };
-};
-
-function SelectIndicator({ className }: { className?: string }) {
-  return (
-    <ChevronDown
-      aria-hidden='true'
-      className={cn(
-        'pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground',
-        className,
-      )}
-    />
-  );
-}
-
-function KindSelect({
-  value,
-  onChange,
-  label,
-}: {
-  value: ValueKind;
-  onChange: (kind: ValueKind) => void;
-  label: string;
-}) {
-  return (
-    <div className='relative inline-block'>
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(event) => onChange(event.target.value as ValueKind)}
-        className={cn(
-          selectControlClassName,
-          'h-8 min-w-28 text-xs font-medium text-muted-foreground',
-        )}
-      >
-        {VALUE_KINDS.map((kind) => (
-          <option key={kind} value={kind}>
-            {kind}
-          </option>
-        ))}
-      </select>
-      <SelectIndicator className='size-3.5' />
-    </div>
-  );
-}
-
-function LanguageSelect({
-  value,
-  onChange,
-  label,
-}: {
-  value: string;
-  onChange: (language: string) => void;
-  label: string;
-}) {
-  return (
-    <div className='relative inline-block'>
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={cn(selectControlClassName, 'h-9 text-sm font-medium')}
-      >
-        {TRANSLATOR_LANGUAGES.map((language) => (
-          <option key={language.code} value={language.code}>
-            {language.label}
-          </option>
-        ))}
-      </select>
-      <SelectIndicator />
-    </div>
-  );
-}
-
-function StatusBadge({
-  tone,
-  children,
-}: {
-  tone: 'default' | 'danger' | 'warning' | 'success';
-  children: React.ReactNode;
-}) {
-  return (
-    <span
-      className={cn(
-        'inline-flex h-6 items-center rounded-full px-2 text-xs font-medium',
-        tone === 'default' && 'bg-muted text-muted-foreground',
-        tone === 'danger' && 'bg-destructive/10 text-destructive',
-        tone === 'warning' && 'bg-amber-500/10 text-amber-700',
-        tone === 'success' && 'bg-emerald-500/10 text-emerald-700',
-      )}
-    >
-      {children}
-    </span>
-  );
-}
+const GITHUB_REPOSITORY_URL = 'https://github.com/taufiq-dev/trans-diff';
 
 export default function Home() {
   const [files, setFiles] = useState<TranslationFile[]>([]);
@@ -864,10 +126,6 @@ export default function Home() {
   const previousPasteDialogOpenRef = useRef(isPasteDialogOpen);
   const isTranslatorSupported = getTranslatorFactory() !== null;
 
-  const gridTemplateColumns = useMemo(
-    () => `minmax(320px, 1.1fr) repeat(${files.length}, minmax(340px, 1fr))`,
-    [files.length],
-  );
   const treePaths = useMemo(() => collectVisiblePaths(files), [files]);
   const searchFilter = useMemo(
     () => createSearchFilter(treePaths, searchQuery),
@@ -1658,12 +916,15 @@ export default function Home() {
 
     return (
       <div key={key}>
-        <div
-          className='grid min-w-max items-stretch border-b border-border/60 bg-background/80'
-          style={{ gridTemplateColumns }}
-        >
-          <div className='sticky left-0 z-10 flex min-h-24 items-center gap-2 border-r border-border/60 bg-background/95 px-3 py-3'>
-            <div style={{ width: depth * 18 }} />
+        <div className='flex min-w-max items-stretch border-b border-border/60 bg-background/80'>
+          <div className='sticky left-0 z-10 flex min-h-24 w-80 shrink-0 items-center gap-2 border-r border-border/60 bg-background/95 px-3 py-3'>
+            {Array.from({ length: depth }, (_, index) => (
+              <span
+                aria-hidden='true'
+                className='block w-4.5 shrink-0'
+                key={index}
+              />
+            ))}
             <Button
               aria-label={isExpanded ? 'Collapse path' : 'Expand path'}
               disabled={childSegments.length === 0}
@@ -1709,7 +970,10 @@ export default function Home() {
           </div>
 
           {files.map((file) => (
-            <div key={file.id} className='min-w-0 border-r border-border/40 p-3'>
+            <div
+              key={file.id}
+              className='min-w-85 flex-1 border-r border-border/40 p-3'
+            >
               {renderValueCell(file, path)}
             </div>
           ))}
@@ -1725,7 +989,7 @@ export default function Home() {
 
   return (
     <div className='flex min-h-svh flex-col bg-muted/40'>
-      <header className='sticky top-0 z-20 border-b border-border/70 bg-background/90 px-4 py-3 backdrop-blur'>
+      <header className='sticky top-0 z-40 border-b border-border/70 bg-background/90 px-4 py-3 backdrop-blur'>
         <div className='flex flex-wrap items-center justify-between gap-3'>
           <div>
             <div className='flex flex-wrap items-center gap-2'>
@@ -1825,6 +1089,15 @@ export default function Home() {
               <ClipboardPaste />
               Paste JSON
             </Button>
+            <a
+              aria-label='View Trans Diff on GitHub'
+              className={buttonVariants({ variant: 'outline', size: 'icon' })}
+              href={GITHUB_REPOSITORY_URL}
+              rel='noreferrer'
+              target='_blank'
+            >
+              <GithubMarkIcon />
+            </a>
           </div>
         </div>
         <div className='mt-2 min-h-5 text-xs text-muted-foreground'>
@@ -1861,94 +1134,23 @@ export default function Home() {
         </Alert>
       )}
 
-      <Dialog open={isPasteDialogOpen} onOpenChange={handlePasteDialogOpenChange}>
-        <DialogContent
-          className='flex h-[min(720px,calc(100svh-2rem))] max-h-[calc(100svh-2rem)] overflow-hidden p-0 sm:max-w-3xl'
-          onAnimationEnd={(event) => {
-            debugPasteDialog('dialog-animation-end', {
-              animationName: event.animationName,
-              open: isPasteDialogOpen,
-            });
-          }}
-          onAnimationStart={(event) => {
-            debugPasteDialog('dialog-animation-start', {
-              animationName: event.animationName,
-              open: isPasteDialogOpen,
-            });
-          }}
-        >
-          <form
-            className='flex min-h-0 flex-1 flex-col'
-            onSubmit={handlePasteJsonSubmit}
-          >
-            <DialogHeader className='shrink-0 p-4'>
-              <DialogTitle>Paste JSON</DialogTitle>
-              <DialogDescription>
-                Add an existing JSON file by pasting its raw content.
-              </DialogDescription>
-            </DialogHeader>
-            <div className='flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-4 pb-4'>
-              <div className='grid shrink-0 gap-2'>
-                <Label htmlFor='paste-file-name'>File name</Label>
-                <Input
-                  id='paste-file-name'
-                  value={pasteFileName}
-                  onChange={(event) => setPasteFileName(event.target.value)}
-                  placeholder='id.json'
-                />
-              </div>
-              <div className='grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] gap-2'>
-                <Label htmlFor='paste-json-content'>JSON content</Label>
-                <Suspense
-                  fallback={
-                    <div className='h-full min-h-0 rounded-lg border border-input bg-background' />
-                  }
-                >
-                  <JsonCodeEditor
-                    id='paste-json-content'
-                    ariaLabel='JSON content'
-                    className='h-full'
-                    invalid={Boolean(pasteJsonError)}
-                    value={pasteJsonContent}
-                    onChange={(nextValue) => {
-                      setPasteJsonContent(nextValue);
-                      setPasteJsonError(null);
-                    }}
-                  />
-                </Suspense>
-                <div className='min-h-5 text-xs'>
-                  {pasteJsonError ? (
-                    <span className='text-destructive'>{pasteJsonError}</span>
-                  ) : (
-                    <span className='text-muted-foreground'>
-                      The pasted content must parse as JSON.
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-            <DialogFooter className='mx-0 mb-0 shrink-0 rounded-b-xl px-4 pb-4 pt-3'>
-              <Button
-                type='button'
-                variant='outline'
-                onClick={() => setIsPasteDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type='submit'>
-                <Plus />
-                Add pasted JSON
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <PasteJsonDialog
+        fileName={pasteFileName}
+        jsonContent={pasteJsonContent}
+        jsonError={pasteJsonError}
+        open={isPasteDialogOpen}
+        onFileNameChange={setPasteFileName}
+        onJsonContentChange={setPasteJsonContent}
+        onJsonErrorChange={setPasteJsonError}
+        onOpenChange={handlePasteDialogOpenChange}
+        onSubmit={handlePasteJsonSubmit}
+      />
 
-      <main className='flex-1 overflow-hidden p-4'>
+      <main className='relative z-0 flex-1 overflow-hidden p-4'>
         {files.length === 0 ? (
           <Card
             className={cn(
-              'mx-auto flex min-h-[520px] max-w-3xl items-center justify-center border-2 border-dashed border-muted-foreground/35 bg-background transition-[border-color,background-color,box-shadow]',
+              'mx-auto flex min-h-130 max-w-3xl items-center justify-center border-2 border-dashed border-muted-foreground/35 bg-background transition-[border-color,background-color,box-shadow]',
               isDraggingJson &&
                 'border-primary bg-muted/60 shadow-sm ring-3 ring-ring/20',
             )}
@@ -1990,11 +1192,8 @@ export default function Home() {
           <Card className='h-full overflow-hidden bg-background shadow-sm'>
             <CardContent className='h-full p-0'>
               <div className='h-full overflow-auto'>
-                <div
-                  className='sticky top-0 z-20 grid min-w-max border-b border-border/70 bg-background'
-                  style={{ gridTemplateColumns }}
-                >
-                  <div className='sticky left-0 z-30 border-r border-border/60 bg-background p-3'>
+                <div className='sticky top-0 z-20 flex min-w-max border-b border-border/70 bg-background'>
+                  <div className='sticky left-0 z-30 w-80 shrink-0 border-r border-border/60 bg-background p-3'>
                     <p className='text-xs font-medium uppercase text-muted-foreground'>
                       Tree
                     </p>
@@ -2039,7 +1238,7 @@ export default function Home() {
                   {files.map((file) => (
                     <div
                       key={file.id}
-                      className='flex min-w-0 items-center justify-between gap-3 border-r border-border/40 p-3'
+                      className='flex min-w-85 flex-1 items-center justify-between gap-3 border-r border-border/40 p-3'
                     >
                       <div className='min-w-0'>
                         <p className='truncate text-sm font-semibold'>
