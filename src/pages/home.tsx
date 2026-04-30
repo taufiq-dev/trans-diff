@@ -3,6 +3,7 @@ import {
   Suspense,
   useMemo,
   useState,
+  useTransition,
   type ChangeEvent,
   type DragEvent,
   type FormEvent,
@@ -832,6 +833,7 @@ export default function Home() {
   );
   const [addDrafts, setAddDrafts] = useState<Record<string, AddDraft>>({});
   const [renameDrafts, setRenameDrafts] = useState<Record<string, string>>({});
+  const [, startPasteJsonTransition] = useTransition();
   const isTranslatorSupported = getTranslatorFactory() !== null;
 
   const gridTemplateColumns = useMemo(
@@ -921,11 +923,17 @@ export default function Home() {
         throw new Error('The pasted content contains values that are not valid JSON.');
       }
 
-      addJsonFile(pasteFileName, parsed, String(Date.now()));
-      setPasteFileName('pasted.json');
-      setPasteJsonContent('');
+      const submittedFileName = pasteFileName;
+      const submittedAt = String(Date.now());
+
       setPasteJsonError(null);
       setIsPasteDialogOpen(false);
+
+      startPasteJsonTransition(() => {
+        addJsonFile(submittedFileName, parsed, submittedAt);
+        setPasteFileName('pasted.json');
+        setPasteJsonContent('');
+      });
     } catch (pasteError) {
       setPasteJsonError(
         pasteError instanceof Error
