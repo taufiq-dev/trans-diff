@@ -21,10 +21,8 @@ import {
   LoaderCircle,
   Plus,
   Save,
-  Search,
   Trash2,
   Upload,
-  X,
 } from 'lucide-react';
 import { GithubMarkIcon } from '@/components/github-mark-icon';
 import {
@@ -35,6 +33,7 @@ import {
 } from '@/components/json-tree-controls';
 import { PasteJsonDialog } from '@/components/paste-json-dialog';
 import { selectControlClassName } from '@/components/select-control';
+import { TreeSearchInput } from '@/components/tree-search-input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -1210,30 +1209,10 @@ export default function Home() {
                         </span>
                       )}
                     </div>
-                    <div className='relative mt-3'>
-                      <Search
-                        aria-hidden='true'
-                        className='pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground'
-                      />
-                      <Input
-                        aria-label='Search keys or paths'
-                        className='h-9 rounded-3xl bg-input/50 pl-9 pr-9'
-                        placeholder='Search keys or paths'
-                        value={searchQuery}
-                        onChange={(event) => setSearchQuery(event.target.value)}
-                      />
-                      {searchQuery && (
-                        <Button
-                          aria-label='Clear key search'
-                          className='absolute right-1 top-1/2 size-7 -translate-y-1/2'
-                          size='icon-sm'
-                          variant='ghost'
-                          onClick={() => setSearchQuery('')}
-                        >
-                          <X />
-                        </Button>
-                      )}
-                    </div>
+                    <TreeSearchInput
+                      value={searchQuery}
+                      onValueChange={setSearchQuery}
+                    />
                   </div>
                   {files.map((file) => (
                     <div

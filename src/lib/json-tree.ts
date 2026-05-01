@@ -26,8 +26,10 @@ type SearchFilter = {
 };
 
 type SearchablePath = {
+  arrayAccessPath: string;
   dottedPath: string;
   formattedPath: string;
+  indexlessPath: string;
   path: JsonPath;
   segment: string;
 };
@@ -352,6 +354,20 @@ export const formatPath = (path: JsonPath): string => {
 export const formatDottedPath = (path: JsonPath): string =>
   path.map((segment) => String(segment)).join('.');
 
+const formatArrayAccessPath = (path: JsonPath): string =>
+  path.reduce<string>((acc, segment) => {
+    if (typeof segment === 'number') {
+      return `${acc}[${segment}]`;
+    }
+
+    return acc ? `${acc}.${segment}` : segment;
+  }, '');
+
+const formatIndexlessPath = (path: JsonPath): string =>
+  path
+    .filter((segment): segment is string => typeof segment === 'string')
+    .join('.');
+
 export const formatSegment = (segment: PathSegment | undefined): string => {
   if (segment === undefined) {
     return 'Root';
@@ -494,13 +510,21 @@ export const createSearchFilter = (
   const searchablePaths: SearchablePath[] = paths
     .filter((path) => path.length > 0)
     .map((path) => ({
+      arrayAccessPath: formatArrayAccessPath(path),
       dottedPath: formatDottedPath(path),
       formattedPath: formatPath(path),
+      indexlessPath: formatIndexlessPath(path),
       path,
       segment: formatSegment(path[path.length - 1]),
     }));
   const matchedPaths = matchSorter(searchablePaths, trimmedQuery, {
-    keys: ['segment', 'dottedPath', 'formattedPath'],
+    keys: [
+      'segment',
+      'dottedPath',
+      'arrayAccessPath',
+      'indexlessPath',
+      'formattedPath',
+    ],
   });
   const visiblePathKeys = new Set<string>();
 
