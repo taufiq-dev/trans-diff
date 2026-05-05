@@ -2,6 +2,7 @@
   "name": "trans-diff",
   "private": true,
   "version": "0.0.0",
+  "license": "MIT",
   "packageManager": "pnpm@11.0.1",
   "type": "module",
   "scripts": {

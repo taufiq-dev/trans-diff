@@ -62,3 +62,7 @@ pnpm preview
 
 Trans Diff runs entirely in the browser. Uploaded and pasted JSON content is
 kept in local browser state unless you explicitly save a modified file.
+
+## License
+
+MIT License. Copyright (c) 2026 Taufiq. See [LICENSE](LICENSE).
