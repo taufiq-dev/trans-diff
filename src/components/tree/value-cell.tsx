@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
@@ -228,6 +229,9 @@ function PrimitiveEditor({
 
 function ValueCell({ actions, file, files, path }: ValueCellProps) {
   const value = getValueAtPath(file.data, path);
+  // Set when this cell was just created from "Missing", so only that swap
+  // gets an entrance and existing cells render instantly.
+  const [justAdded, setJustAdded] = useState(false);
 
   if (value === MISSING) {
     const suggestedKind = getSuggestedKind(files, path);
@@ -239,9 +243,10 @@ function ValueCell({ actions, file, files, path }: ValueCellProps) {
           className='h-6 border border-dashed border-amber-500/50 text-amber-800 hover:bg-amber-500/10 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-200'
           size='xs'
           variant='ghost'
-          onClick={() =>
-            actions.setValue(file.id, path, createDefaultValue(suggestedKind))
-          }
+          onClick={() => {
+            setJustAdded(true);
+            actions.setValue(file.id, path, createDefaultValue(suggestedKind));
+          }}
         >
           <Plus />
           Add {suggestedKind}
@@ -288,7 +293,14 @@ function ValueCell({ actions, file, files, path }: ValueCellProps) {
   }
 
   return (
-    <div className='flex w-full items-center gap-1'>
+    <div
+      className={cn(
+        'flex w-full items-center gap-1',
+        justAdded &&
+          'animate-in fade-in-0 zoom-in-98 duration-150 ease-out-quint motion-reduce:zoom-in-100',
+      )}
+      onAnimationEnd={() => setJustAdded(false)}
+    >
       <PrimitiveEditor
         actions={actions}
         file={file}

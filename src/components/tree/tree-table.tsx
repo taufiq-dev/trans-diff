@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import {
   ChevronsDownUp,
   ChevronsUpDown,
@@ -11,14 +12,25 @@ import {
   TreeRow,
   type SearchFilter,
 } from '@/components/tree/tree-row';
-import type { TreeActions } from '@/components/tree/types';
+import {
+  COLUMN_ENTER_CLASS_NAME,
+  type EnteringFile,
+  type TreeActions,
+} from '@/components/tree/types';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { countLeaves, type TranslationFile } from '@/lib/json-tree';
+import {
+  collectChildSegments,
+  countLeaves,
+  pathToKey,
+  type JsonPath,
+  type TranslationFile,
+} from '@/lib/json-tree';
 import { cn } from '@/lib/utils';
 
 type TreeTableProps = {
   actions: TreeActions;
+  enteringFile: EnteringFile | null;
   expandedPaths: Set<string>;
   files: TranslationFile[];
   onSearchChange: (value: string) => void;
@@ -51,12 +63,43 @@ function IconAction({
 
 function TreeTable({
   actions,
+  enteringFile,
   expandedPaths,
   files,
   onSearchChange,
   searchFilter,
   searchQuery,
 }: TreeTableProps) {
+  // Visible rows in display order, only needed to stagger an entering column.
+  const staggerIndexByKey = useMemo(() => {
+    if (!enteringFile?.stagger) {
+      return null;
+    }
+
+    const indexByKey = new Map<string, number>();
+    const walk = (path: JsonPath) => {
+      const key = pathToKey(path);
+      if (searchFilter && !searchFilter.visiblePathKeys.has(key)) {
+        return;
+      }
+      indexByKey.set(key, indexByKey.size);
+
+      const childSegments = collectChildSegments(files, path).filter(
+        (segment) =>
+          !searchFilter ||
+          searchFilter.visiblePathKeys.has(pathToKey([...path, segment])),
+      );
+      const isExpanded = searchFilter
+        ? childSegments.length > 0
+        : expandedPaths.has(key);
+      if (isExpanded) {
+        childSegments.forEach((segment) => walk([...path, segment]));
+      }
+    };
+    walk([]);
+    return indexByKey;
+  }, [enteringFile, expandedPaths, files, searchFilter]);
+
   return (
     <div className='h-full overflow-auto' role='table'>
       <div className='sticky top-0 z-20 flex min-w-max border-b bg-background'>
@@ -86,6 +129,7 @@ function TreeTable({
             className={cn(
               FILE_COLUMN_CLASS_NAME,
               'flex items-center justify-between gap-2 border-r border-border/40 px-3 py-2 last:border-r-0',
+              file.id === enteringFile?.id && COLUMN_ENTER_CLASS_NAME,
             )}
           >
             <div className='min-w-0'>
@@ -120,10 +164,12 @@ function TreeTable({
       ) : (
         <TreeRow
           actions={actions}
+          enteringFile={enteringFile}
           expandedPaths={expandedPaths}
           files={files}
           path={[]}
           searchFilter={searchFilter}
+          staggerIndexByKey={staggerIndexByKey}
         />
       )}
     </div>

@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -12,10 +13,11 @@ import { Landing } from '@/components/landing';
 import { PasteJsonDialog } from '@/components/paste-json-dialog';
 import { TranslatePopover } from '@/components/translate-popover';
 import { TreeTable } from '@/components/tree/tree-table';
-import type { TreeActions } from '@/components/tree/types';
+import type { EnteringFile, TreeActions } from '@/components/tree/types';
 import { Alert, AlertAction, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { usePasteJson } from '@/hooks/use-paste-json';
+import { usePresence } from '@/hooks/use-presence';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/hooks/use-translation';
 import { debugPasteDialog } from '@/lib/debug';
@@ -45,6 +47,9 @@ import { SAMPLE_FILES } from '@/lib/sample-files';
 
 const FILE_INPUT_ID = 'file-upload';
 const ROOT_KEY = pathToKey([]);
+const ERROR_EXIT_MS = 150;
+const DROP_OVERLAY_EXIT_MS = 100;
+const COLUMN_ENTER_MS = 600;
 
 export default function Home() {
   const [files, setFiles] = useState<TranslationFile[]>([]);
@@ -55,8 +60,31 @@ export default function Home() {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
     () => new Set([ROOT_KEY]),
   );
+  const [enteringFile, setEnteringFile] = useState<EnteringFile | null>(null);
+  // Kept after `error` clears so the alert still has text while it exits.
+  const [displayedError, setDisplayedError] = useState<string | null>(null);
   const dragDepthRef = useRef(0);
   const { theme, toggleTheme } = useTheme();
+  const errorPresence = usePresence(error !== null, ERROR_EXIT_MS);
+  const dropOverlayPresence = usePresence(
+    isDragging && files.length > 0,
+    DROP_OVERLAY_EXIT_MS,
+  );
+
+  if (error !== null && error !== displayedError) {
+    setDisplayedError(error);
+  }
+
+  useEffect(() => {
+    if (enteringFile === null) {
+      return undefined;
+    }
+    const timeoutId = window.setTimeout(
+      () => setEnteringFile(null),
+      COLUMN_ENTER_MS,
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [enteringFile]);
 
   const treePaths = useMemo(() => collectVisiblePaths(files), [files]);
   const searchFilter = useMemo(
@@ -83,6 +111,7 @@ export default function Home() {
         root: getJsonValueDebugSummary(data),
       });
       setFiles((currentFiles) => [...currentFiles, nextFile]);
+      setEnteringFile({ id: nextFile.id, stagger: false });
       setSelectedSourceFileId((currentId) => currentId || nextFile.id);
       setExpandedPaths((currentPaths) => new Set(currentPaths).add(ROOT_KEY));
       setError(null);
@@ -98,6 +127,7 @@ export default function Home() {
   const translation = useTranslation({
     onError: setError,
     onTranslated: (sourceFile, translatedFile) => {
+      setEnteringFile({ id: translatedFile.id, stagger: true });
       setFiles((currentFiles) => {
         const sourceIndex = currentFiles.findIndex(
           (file) => file.id === sourceFile.id,
@@ -366,12 +396,13 @@ export default function Home() {
         onToggleTheme={toggleTheme}
       />
 
-      {error && (
+      {errorPresence.mounted && (
         <Alert
-          className='mx-3 mt-3 shrink-0 animate-in fade-in-0 slide-in-from-top-1 duration-200 ease-out'
+          className='mx-3 mt-3 shrink-0 ease-out-quint fill-mode-both data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-top-1 data-[state=open]:duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-1 data-[state=closed]:duration-150'
+          data-state={errorPresence.state}
           variant='destructive'
         >
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{displayedError}</AlertDescription>
           <AlertAction>
             <Button
               aria-label='Dismiss error'
@@ -400,6 +431,7 @@ export default function Home() {
             <div className='h-full overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10 animate-in fade-in-0 duration-200 ease-out'>
               <TreeTable
                 actions={actions}
+                enteringFile={enteringFile}
                 expandedPaths={expandedPaths}
                 files={files}
                 searchFilter={searchFilter}
@@ -411,9 +443,12 @@ export default function Home() {
         )}
       </main>
 
-      {isDragging && files.length > 0 && (
-        <div className='pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm animate-in fade-in-0 duration-150 ease-out'>
-          <div className='flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-primary bg-card px-10 py-8 text-center shadow-lg animate-in fade-in-0 zoom-in-95 duration-150 ease-out'>
+      {dropOverlayPresence.mounted && (
+        <div
+          className='group/overlay pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm ease-out-quint fill-mode-both data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:duration-150 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:duration-100'
+          data-state={dropOverlayPresence.state}
+        >
+          <div className='flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-primary bg-card px-10 py-8 text-center shadow-lg ease-out-quint fill-mode-both group-data-[state=open]/overlay:animate-in group-data-[state=open]/overlay:fade-in-0 group-data-[state=open]/overlay:zoom-in-95 group-data-[state=open]/overlay:duration-150 group-data-[state=closed]/overlay:animate-out group-data-[state=closed]/overlay:fade-out-0 group-data-[state=closed]/overlay:zoom-out-95 group-data-[state=closed]/overlay:duration-100'>
             <Upload className='size-6 text-muted-foreground' />
             <p className='font-medium'>Drop JSON files to add them</p>
           </div>

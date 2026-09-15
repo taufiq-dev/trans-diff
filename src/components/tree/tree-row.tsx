@@ -7,7 +7,13 @@ import {
   Trash2,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/status-badge';
-import type { TreeActions } from '@/components/tree/types';
+import {
+  COLUMN_ENTER_CLASS_NAME,
+  COLUMN_STAGGER_MAX_ROWS,
+  COLUMN_STAGGER_STEP_MS,
+  type EnteringFile,
+  type TreeActions,
+} from '@/components/tree/types';
 import { ValueCell } from '@/components/tree/value-cell';
 import { Button } from '@/components/ui/button';
 import {
@@ -38,10 +44,12 @@ type SearchFilter = {
 type TreeRowProps = {
   actions: TreeActions;
   depth?: number;
+  enteringFile: EnteringFile | null;
   expandedPaths: Set<string>;
   files: TranslationFile[];
   path: JsonPath;
   searchFilter: SearchFilter | null;
+  staggerIndexByKey: Map<string, number> | null;
 };
 
 const TREE_COLUMN_CLASS_NAME = 'w-80 shrink-0';
@@ -50,10 +58,12 @@ const FILE_COLUMN_CLASS_NAME = 'min-w-72 flex-1';
 function TreeRow({
   actions,
   depth = 0,
+  enteringFile,
   expandedPaths,
   files,
   path,
   searchFilter,
+  staggerIndexByKey,
 }: TreeRowProps): ReactNode {
   const key = pathToKey(path);
   const [renameDraft, setRenameDraft] = useState<string | null>(null);
@@ -61,6 +71,10 @@ function TreeRow({
   if (searchFilter && !searchFilter.visiblePathKeys.has(key)) {
     return null;
   }
+
+  const rowIndex = staggerIndexByKey?.get(key) ?? 0;
+  const enterDelayMs =
+    Math.min(rowIndex, COLUMN_STAGGER_MAX_ROWS) * COLUMN_STAGGER_STEP_MS;
 
   const childSegments = collectChildSegments(files, path).filter(
     (childSegment) =>
@@ -224,8 +238,14 @@ function TreeRow({
             className={cn(
               FILE_COLUMN_CLASS_NAME,
               'flex h-10 items-center border-r border-border/40 px-2 last:border-r-0',
+              file.id === enteringFile?.id && COLUMN_ENTER_CLASS_NAME,
             )}
             role='cell'
+            style={
+              file.id === enteringFile?.id && enterDelayMs > 0
+                ? { animationDelay: `${enterDelayMs}ms` }
+                : undefined
+            }
           >
             <ValueCell actions={actions} file={file} files={files} path={path} />
           </div>
@@ -238,10 +258,12 @@ function TreeRow({
             key={pathToKey([...path, childSegment])}
             actions={actions}
             depth={depth + 1}
+            enteringFile={enteringFile}
             expandedPaths={expandedPaths}
             files={files}
             path={[...path, childSegment]}
             searchFilter={searchFilter}
+            staggerIndexByKey={staggerIndexByKey}
           />
         ))}
     </>
