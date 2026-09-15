@@ -1,0 +1,72 @@
+{
+    "appName": "Pembanding Terjemahan",
+    "version": 3,
+    "isBeta": true,
+    "lastUpdated": null,
+    "navigation": {
+      "home": "Beranda",
+      "settings": "Pengaturan",
+      "profile": "Profil Saya",
+      "logout": "Keluar"
+    },
+    "welcome": {
+      "title": "Selamat datang kembali",
+      "subtitle": "Periksa dan perbarui terjemahan aplikasi Anda.",
+      "tips": [
+        "Unggah beberapa berkas JSON.",
+        "Bandingkan nilai di setiap bahasa.",
+        "Simpan hasil yang sudah diperbarui."
+      ]
+    },
+    "errors": {
+      "network": "Koneksi internet terputus.",
+      "notFound": "Data yang diminta tidak ditemukan.",
+      "unauthorized": "Anda tidak memiliki izin untuk membuka halaman ini.",
+      "validation": {
+        "required": "Kolom ini wajib diisi.",
+        "email": "Masukkan alamat email yang valid.",
+        "minLength": "Teks terlalu pendek."
+      }
+    },
+    "products": [
+      {
+        "id": 101,
+        "name": "Kopi Susu Gula Aren",
+        "available": true,
+        "tags": ["minuman", "kopi", "favorit"],
+        "description": "Kopi susu dingin dengan gula aren asli."
+      },
+      {
+        "id": 102,
+        "name": "Nasi Goreng Kampung",
+        "available": false,
+        "tags": ["makanan", "pedas"],
+        "description": "Nasi goreng dengan telur, ayam suwir, dan sambal."
+      }
+    ],
+    "checkout": {
+      "steps": ["Keranjang", "Alamat", "Pembayaran", "Selesai"],
+      "summary": {
+        "subtotalLabel": "Subtotal",
+        "taxLabel": "Pajak",
+        "shippingLabel": "Ongkos kirim",
+        "totalLabel": "Total pembayaran"
+      },
+      "allowVoucher": true,
+      "maxItems": 20
+    },
+    "emptyState": {
+      "title": "Belum ada data",
+      "message": "Tambahkan item pertama Anda untuk memulai.",
+      "actions": [
+        {
+          "label": "Tambah item",
+          "primary": true
+        },
+        {
+          "label": "Pelajari lebih lanjut",
+          "primary": false
+        }
+      ]
+    }
+  }
