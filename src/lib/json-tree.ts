@@ -485,13 +485,9 @@ export const getPathStatus = (
 };
 
 export const countNotSyncedPaths = (files: TranslationFile[]): number =>
-  collectVisiblePaths(files).filter((path) => {
-    const status = getPathStatus(files, path);
-    return (
-      status.label !== 'Synced' &&
-      !status.label.toLowerCase().includes('missing')
-    );
-  }).length;
+  collectVisiblePaths(files).filter(
+    (path) => getPathStatus(files, path).tone !== 'success',
+  ).length;
 
 const isDescendantPath = (path: JsonPath, ancestorPath: JsonPath): boolean =>
   path.length > ancestorPath.length &&
