@@ -42,8 +42,25 @@ const jsonEditorTheme = EditorView.theme({
       'ui-monospace, SFMono-Regular, SFMono, Menlo, Consolas, "Liberation Mono", monospace',
     overflow: 'auto',
   },
-  '.cm-selectionBackground': {
-    backgroundColor: 'var(--accent) !important',
+  // A real selection blue; the theme's --accent is too close to the editor
+  // background in dark mode to read as a selection.
+  '.cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection':
+    {
+      backgroundColor: 'oklch(0.62 0.19 255 / 0.35) !important',
+    },
+  '.cm-activeLine': {
+    backgroundColor: 'color-mix(in oklab, var(--foreground) 6%, transparent)',
+  },
+  '.cm-activeLineGutter': {
+    backgroundColor: 'color-mix(in oklab, var(--foreground) 8%, transparent)',
+    color: 'var(--foreground)',
+  },
+  '.cm-selectionMatch': {
+    backgroundColor: 'oklch(0.62 0.19 255 / 0.18)',
+  },
+  '&.cm-focused .cm-matchingBracket': {
+    backgroundColor: 'color-mix(in oklab, var(--foreground) 15%, transparent)',
+    outline: 'none',
   },
 });
 
