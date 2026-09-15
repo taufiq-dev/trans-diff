@@ -21,7 +21,6 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   collectChildSegments,
-  collectVisiblePaths,
   countLeaves,
   pathToKey,
   type JsonPath,
@@ -71,18 +70,6 @@ function TreeTable({
   searchFilter,
   searchQuery,
 }: TreeTableProps) {
-  // True when every path that has children is expanded, so the toggle can
-  // offer the opposite action.
-  const allExpanded = useMemo(
-    () =>
-      collectVisiblePaths(files).every(
-        (path) =>
-          collectChildSegments(files, path).length === 0 ||
-          expandedPaths.has(pathToKey(path)),
-      ),
-    [expandedPaths, files],
-  );
-
   // Visible rows in display order, only needed to stagger an entering column.
   const staggerIndexByKey = useMemo(() => {
     if (!enteringFile?.stagger) {
@@ -128,16 +115,12 @@ function TreeTable({
             value={searchQuery}
             onValueChange={onSearchChange}
           />
-          <Button
-            className='shrink-0'
-            disabled={searchFilter !== null}
-            size='xs'
-            variant='ghost'
-            onClick={allExpanded ? actions.collapseAll : actions.expandAll}
-          >
-            {allExpanded ? <ChevronsDownUp /> : <ChevronsUpDown />}
-            {allExpanded ? 'Collapse all' : 'Expand all'}
-          </Button>
+          <IconAction label='Expand all' onClick={actions.expandAll}>
+            <ChevronsUpDown />
+          </IconAction>
+          <IconAction label='Collapse all' onClick={actions.collapseAll}>
+            <ChevronsDownUp />
+          </IconAction>
         </div>
 
         {files.map((file) => (
