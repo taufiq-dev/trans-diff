@@ -43,7 +43,26 @@
     "quickActions": {
       "newProject": "Neues Projekt",
       "invite": "Benutzer einladen"
-    }
+    },
+    "tips": [
+      "Laden Sie Ihre Sprachdateien hoch.",
+      "Ergänzen Sie fehlende Schlüssel.",
+      "Laden Sie das Ergebnis herunter."
+    ],
+    "checkoutSteps": [
+      {
+        "label": "Warenkorb",
+        "optional": false
+      },
+      {
+        "label": "Adresse",
+        "optional": false
+      },
+      {
+        "label": "Geschenknachricht",
+        "optional": true
+      }
+    ]
   },
   "settings": {
     "title": "Einstellungen",

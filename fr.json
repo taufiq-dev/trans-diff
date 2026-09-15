@@ -38,7 +38,25 @@
       "activeUsers": "Utilisateurs actifs",
       "revenue": "Chiffre d'affaires",
       "monthlyVisits": "Visites mensuelles"
-    }
+    },
+    "tips": [
+      "Importez vos fichiers de langue.",
+      "Complétez les clés manquantes."
+    ],
+    "checkoutSteps": [
+      {
+        "label": "Panier",
+        "optional": false
+      },
+      {
+        "label": "Adresse",
+        "optional": false
+      },
+      {
+        "label": "Message cadeau",
+        "optional": true
+      }
+    ]
   },
   "settings": {
     "title": "Paramètres",

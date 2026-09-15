@@ -34,7 +34,26 @@
       "totalUsers": "Total Users",
       "activeUsers": "Active Users",
       "revenue": "Revenue"
-    }
+    },
+    "tips": [
+      "Upload your locale files.",
+      "Fix any missing keys.",
+      "Download the result."
+    ],
+    "checkoutSteps": [
+      {
+        "label": "Cart",
+        "optional": false
+      },
+      {
+        "label": "Address",
+        "optional": false
+      },
+      {
+        "label": "Gift note",
+        "optional": true
+      }
+    ]
   },
   "settings": {
     "title": "Settings",
