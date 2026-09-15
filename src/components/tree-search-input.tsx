@@ -8,8 +8,11 @@ import {
 import { Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 
 type TreeSearchInputProps = {
+  className?: string;
+  matchCount: number | null;
   onValueChange: (value: string) => void;
   value: string;
 };
@@ -17,6 +20,8 @@ type TreeSearchInputProps = {
 const SEARCH_APPLY_DELAY_MS = 120;
 
 export function TreeSearchInput({
+  className,
+  matchCount,
   onValueChange,
   value,
 }: TreeSearchInputProps) {
@@ -42,33 +47,34 @@ export function TreeSearchInput({
     setInputValue(event.target.value);
   };
 
-  const clearSearch = () => {
-    setInputValue('');
-  };
-
   return (
-    <div className='relative mt-3'>
+    <div className={cn('relative', className)}>
       <Search
         aria-hidden='true'
-        className='pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground'
+        className='pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground'
       />
       <Input
         aria-label='Search keys or paths'
-        className='h-9 rounded-3xl bg-input/50 pl-9 pr-9'
-        placeholder='Search keys or paths'
+        className='h-7 pr-7 pl-7 text-sm'
+        placeholder='Search keys…'
         value={inputValue}
         onChange={handleInputChange}
       />
-      {inputValue && (
+      {inputValue ? (
         <Button
-          aria-label='Clear key search'
-          className='absolute right-1 top-1/2 size-7 -translate-y-1/2'
-          size='icon-sm'
+          aria-label='Clear search'
+          className='absolute top-1/2 right-0.5 -translate-y-1/2'
+          size='icon-xs'
           variant='ghost'
-          onClick={clearSearch}
+          onClick={() => setInputValue('')}
         >
           <X />
         </Button>
+      ) : null}
+      {inputValue && matchCount !== null && (
+        <span className='pointer-events-none absolute top-1/2 right-7 -translate-y-1/2 text-[11px] text-muted-foreground tabular-nums'>
+          {matchCount}
+        </span>
       )}
     </div>
   );
