@@ -367,7 +367,10 @@ export default function Home() {
       />
 
       {error && (
-        <Alert className='mx-3 mt-3 shrink-0' variant='destructive'>
+        <Alert
+          className='mx-3 mt-3 shrink-0 animate-in fade-in-0 slide-in-from-top-1 duration-200 ease-out'
+          variant='destructive'
+        >
           <AlertDescription>{error}</AlertDescription>
           <AlertAction>
             <Button
@@ -394,7 +397,7 @@ export default function Home() {
           />
         ) : (
           <div className='min-h-0 flex-1 p-3'>
-            <div className='h-full overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10'>
+            <div className='h-full overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10 animate-in fade-in-0 duration-200 ease-out'>
               <TreeTable
                 actions={actions}
                 expandedPaths={expandedPaths}
@@ -409,8 +412,8 @@ export default function Home() {
       </main>
 
       {isDragging && files.length > 0 && (
-        <div className='pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm'>
-          <div className='flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-primary bg-card px-10 py-8 text-center shadow-lg'>
+        <div className='pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm animate-in fade-in-0 duration-150 ease-out'>
+          <div className='flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-primary bg-card px-10 py-8 text-center shadow-lg animate-in fade-in-0 zoom-in-95 duration-150 ease-out'>
             <Upload className='size-6 text-muted-foreground' />
             <p className='font-medium'>Drop JSON files to add them</p>
           </div>

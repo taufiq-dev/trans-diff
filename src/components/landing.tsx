@@ -19,6 +19,9 @@ type LandingProps = {
   onPaste: () => void;
 };
 
+const ENTER_CLASS_NAME =
+  'animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-both duration-500 ease-out';
+
 const FEATURES = [
   {
     description:
@@ -43,7 +46,9 @@ const FEATURES = [
 function Landing({ fileInputId, isDragging, onLoadSample, onPaste }: LandingProps) {
   return (
     <div className='mx-auto flex w-full max-w-3xl flex-col gap-14 px-4 py-12 sm:py-16'>
-      <section className='flex flex-col items-center gap-6 text-center'>
+      <section
+        className={cn(ENTER_CLASS_NAME, 'flex flex-col items-center gap-6 text-center')}
+      >
         <span className='inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-3 py-1 text-xs text-muted-foreground'>
           <LockKeyhole className='size-3.5' />
           Runs entirely in your browser. Nothing is uploaded.
@@ -93,7 +98,7 @@ function Landing({ fileInputId, isDragging, onLoadSample, onPaste }: LandingProp
         </div>
       </section>
 
-      <section className='grid gap-4 sm:grid-cols-3'>
+      <section className={cn(ENTER_CLASS_NAME, 'grid gap-4 delay-150 sm:grid-cols-3')}>
         {FEATURES.map((feature) => (
           <div
             key={feature.title}
@@ -106,7 +111,7 @@ function Landing({ fileInputId, isDragging, onLoadSample, onPaste }: LandingProp
         ))}
       </section>
 
-      <section className='flex flex-col gap-2'>
+      <section className={cn(ENTER_CLASS_NAME, 'flex flex-col gap-2 delay-300')}>
         <h2 className='font-heading text-xl font-semibold tracking-tight'>FAQ</h2>
         <Faq />
       </section>

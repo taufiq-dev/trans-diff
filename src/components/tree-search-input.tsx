@@ -55,7 +55,7 @@ export function TreeSearchInput({
       />
       <Input
         aria-label='Search keys or paths'
-        className='h-7 pr-7 pl-7 text-sm'
+        className='h-7 pr-7 pl-7'
         placeholder='Search keys…'
         value={inputValue}
         onChange={handleInputChange}

@@ -48,7 +48,7 @@ import {
 import { cn } from '@/lib/utils';
 
 const hoverRevealClassName =
-  'opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100';
+  'opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100 pointer-coarse:opacity-100 motion-reduce:transition-none';
 
 const inlineInputClassName =
   'h-7 flex-1 border-transparent bg-transparent px-1.5 shadow-none hover:border-input focus-visible:border-ring dark:bg-transparent dark:hover:bg-input/30';

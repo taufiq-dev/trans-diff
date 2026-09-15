@@ -119,7 +119,7 @@ function TreeRow({
             >
               <ChevronRight
                 className={cn(
-                  'transition-transform duration-150',
+                  'transition-transform duration-150 motion-reduce:transition-none',
                   isExpanded && 'rotate-90',
                 )}
               />
@@ -132,7 +132,7 @@ function TreeRow({
             <Input
               aria-label='Rename key across files'
               autoFocus
-              className='h-7 min-w-0 flex-1 px-1.5 font-mono text-sm'
+              className='h-7 min-w-0 flex-1 px-1.5 font-mono text-base md:text-sm'
               value={renameDraft}
               onBlur={commitRename}
               onChange={(event) => setRenameDraft(event.target.value)}
@@ -157,6 +157,12 @@ function TreeRow({
                   setRenameDraft(String(segment));
                 }
               }}
+              onKeyDown={(event) => {
+                if (canRename && (event.key === 'Enter' || event.key === 'F2')) {
+                  event.preventDefault();
+                  setRenameDraft(String(segment));
+                }
+              }}
             >
               {isRoot ? 'root' : formatSegment(segment)}
             </button>
@@ -174,7 +180,7 @@ function TreeRow({
                 render={
                   <Button
                     aria-label={`Actions for ${formatPath(path)}`}
-                    className='shrink-0 opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100'
+                    className='shrink-0 opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100 pointer-coarse:opacity-100 motion-reduce:transition-none'
                     size='icon-xs'
                     variant='ghost'
                   />
