@@ -348,6 +348,26 @@ export default function Home() {
         return next;
       });
     },
+    toggleSubtree: (path) => {
+      const key = pathToKey(path);
+      const subtreeKeys = treePaths
+        .filter(
+          (candidate) =>
+            candidate.length >= path.length &&
+            path.every((segment, index) => candidate[index] === segment),
+        )
+        .map((candidate) => pathToKey(candidate));
+
+      setExpandedPaths((currentPaths) => {
+        const next = new Set(currentPaths);
+        if (next.has(key)) {
+          subtreeKeys.forEach((subtreeKey) => next.delete(subtreeKey));
+        } else {
+          subtreeKeys.forEach((subtreeKey) => next.add(subtreeKey));
+        }
+        return next;
+      });
+    },
   };
 
   return (

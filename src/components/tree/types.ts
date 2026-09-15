@@ -39,4 +39,6 @@ export type TreeActions = {
   setKind: (fileId: string, path: JsonPath, kind: ValueKind) => void;
   setValue: (fileId: string, path: JsonPath, value: JsonValue) => void;
   toggleExpanded: (path: JsonPath) => void;
+  // Expands or collapses a path together with every descendant.
+  toggleSubtree: (path: JsonPath) => void;
 };
