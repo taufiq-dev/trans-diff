@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { json } from '@codemirror/lang-json';
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { tags } from '@lezer/highlight';
 import { basicSetup, EditorView } from 'codemirror';
 import { debugPasteDialog } from '@/lib/debug';
 import { cn } from '@/lib/utils';
@@ -12,6 +14,16 @@ type JsonCodeEditorProps = {
   onChange: (value: string) => void;
   value: string;
 };
+
+// CodeMirror's default highlight style is tuned for light backgrounds, so
+// pick mid-lightness hues that stay readable on both themes.
+const jsonHighlightStyle = HighlightStyle.define([
+  { tag: tags.propertyName, color: 'var(--foreground)' },
+  { tag: tags.string, color: 'oklch(0.68 0.17 25)' },
+  { tag: tags.number, color: 'oklch(0.72 0.16 200)' },
+  { tag: [tags.bool, tags.null], color: 'oklch(0.7 0.16 300)' },
+  { tag: [tags.punctuation, tags.separator], color: 'var(--muted-foreground)' },
+]);
 
 const jsonEditorTheme = EditorView.theme({
   '&': {
@@ -100,6 +112,7 @@ function JsonCodeEditor({
         basicSetup,
         json(),
         jsonEditorTheme,
+        syntaxHighlighting(jsonHighlightStyle),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             const nextValue = update.state.doc.toString();
